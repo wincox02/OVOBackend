@@ -512,14 +512,15 @@ INSERT INTO `tipocarrera` (`idTipoCarrera`, `nombreTipoCarrera`) VALUES
 CREATE TABLE IF NOT EXISTS `tipoinstitucion` (
   `idTipoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
   `nombreTipoInstitucion` varchar(50) DEFAULT NULL,
+  `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idTipoInstitucion`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Volcando datos para la tabla ovo.tipoinstitucion: ~2 rows (aproximadamente)
-INSERT INTO `tipoinstitucion` (`idTipoInstitucion`, `nombreTipoInstitucion`) VALUES
-	(1, 'Universitaria'),
-	(2, 'Instituto tecnico'),
-	(3, 'Centro de formacion');
+INSERT INTO `tipoinstitucion` (`idTipoInstitucion`, `nombreTipoInstitucion`, `fechaFin`) VALUES
+	(1, 'Universitaria', NULL),
+	(2, 'Instituto tecnico', NULL),
+	(3, 'Centro de formacion', NULL);
 
 -- Volcando estructura para tabla ovo.usuario
 CREATE TABLE IF NOT EXISTS `usuario` (
@@ -540,7 +541,7 @@ CREATE TABLE IF NOT EXISTS `usuario` (
   CONSTRAINT `FK_usuario_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.usuario: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.usuario: ~1 rows (aproximadamente)
 INSERT INTO `usuario` (`idUsuario`, `mail`, `dni`, `apellido`, `nombre`, `contrasena`, `vencimientoContrasena`, `fechaNac`, `idGenero`, `idLocalidad`) VALUES
 	(1, 'm1718c@gmail.com', 12345678, 'Bufarini', 'Ignacio', 'HnSZzlwAdcOCybWVlw7mGwLX5OwjARun2/LnHUpBn2I=', '2026-08-19 17:36:29', '2000-05-15', 1, 1),
 	(2, 'ana@example.com', NULL, NULL, 'Ana', '7s0ftvL9WCz6AT2uHOuszsh0nZy5C/fBFyZldg+rgNU=', NULL, NULL, NULL, NULL);

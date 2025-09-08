@@ -1,34 +1,27 @@
-from flask import Flask, request, jsonify, make_response, render_template_string
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import mysql.connector
 import json
 import requests
+import jwt
+import datetime
+from functools import wraps
+import uuid
+import re
+import random
+import string
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import hashlib
+import base64
 import decimal
 import traceback
 import os
 
-
-# -----------------------------------JWT-----------------------------------
-import jwt
-import datetime
-from functools import wraps
-# -----------------------------------UUID-----------------------------------
-import uuid
-import re
-#-----------------------------------PASSWORD-----------------------------------
-import random
-import string
-#-----------------------------------SMTP gmail-----------------------------------
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-#-----------------------------------Discord-----------------------------------
-
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True, expose_headers=["new_token"])
 
-# Configuración de MariaDB
 DB_CONFIG = {
     "host": "localhost",
     "port": 3306,
@@ -37,569 +30,12 @@ DB_CONFIG = {
     "database": "ovo"
 }
 
-def init_db():
-    """Inicializa la base de datos MariaDB."""
-    conn = mysql.connector.connect(**DB_CONFIG)
-    cursor = conn.cursor()
-    cursor.execute("""
-        -- --------------------------------------------------------
-        -- Host:                         127.0.0.1
-        -- Versión del servidor:         11.3.2-MariaDB - mariadb.org binary distribution
-        -- SO del servidor:              Win64
-        -- HeidiSQL Versión:             12.6.0.6765
-        -- --------------------------------------------------------
-
-        /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-        /*!40101 SET NAMES utf8 */;
-        /*!50503 SET NAMES utf8mb4 */;
-        /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-        /*!40103 SET TIME_ZONE='+00:00' */;
-        /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-        /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-        /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
-
-
-        -- Volcando estructura de base de datos para ovo
-        CREATE DATABASE IF NOT EXISTS `ovo` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
-        USE `ovo`;
-
-        -- Volcando estructura para tabla ovo.aptitud
-        CREATE TABLE IF NOT EXISTS `aptitud` (
-        `idAptitud` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaAlta` datetime DEFAULT NULL,
-        `nombreAptitud` varchar(50) DEFAULT NULL,
-        `descripcion` varchar(50) DEFAULT NULL,
-        `fechaBaja` datetime DEFAULT NULL,
-        PRIMARY KEY (`idAptitud`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.aptitud: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.aptitudcarrera
-        CREATE TABLE IF NOT EXISTS `aptitudcarrera` (
-        `idAptitudCarrera` int(11) NOT NULL AUTO_INCREMENT,
-        `afinidadCarrera` double DEFAULT NULL,
-        `idAptitud` int(11) DEFAULT NULL,
-        `idCarreraInstitucion` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idAptitudCarrera`),
-        KEY `FK_aptitudcarrera_aptitud` (`idAptitud`),
-        KEY `FK_aptitudcarrera_carrera` (`idCarreraInstitucion`),
-        CONSTRAINT `FK_aptitudcarrera_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_aptitudcarrera_carrera` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrera` (`idCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.aptitudcarrera: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.backup
-        CREATE TABLE IF NOT EXISTS `backup` (
-        `fechaBackup` datetime DEFAULT NULL,
-        `directorio` varchar(50) DEFAULT NULL,
-        `tamano` double DEFAULT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.backup: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.carrera
-        CREATE TABLE IF NOT EXISTS `carrera` (
-        `idCarrera` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaFin` datetime DEFAULT NULL,
-        `nombreCarrera` varchar(50) DEFAULT NULL,
-        `idTipoCarrera` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idCarrera`),
-        KEY `FK_carrera_tipocarrera` (`idTipoCarrera`),
-        CONSTRAINT `FK_carrera_tipocarrera` FOREIGN KEY (`idTipoCarrera`) REFERENCES `tipocarrera` (`idTipoCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.carrera: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.carrerainstitucion
-        CREATE TABLE IF NOT EXISTS `carrerainstitucion` (
-        `idCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `cantidadMaterias` int(11) DEFAULT NULL,
-        `duracionCarrera` decimal(20,2) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        `horasCursado` int(11) DEFAULT NULL,
-        `observaciones` varchar(500) DEFAULT NULL,
-        `nombreCarrera` varchar(50) DEFAULT NULL,
-        `tituloCarrera` varchar(50) DEFAULT NULL,
-        `montoCuota` decimal(20,2) DEFAULT NULL,
-        `idEstadoCarreraInstitucion` int(11) DEFAULT NULL,
-        `idCarrera` int(11) DEFAULT NULL,
-        `idPreguntaFrecuente` int(11) DEFAULT NULL,
-        `idModalidadCarreraInstitucion` int(11) DEFAULT NULL,
-        `idInstitucion` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idCarreraInstitucion`),
-        KEY `FK_carrerainstitucion_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
-        KEY `FK_carrerainstitucion_carrera` (`idCarrera`),
-        KEY `FK_carrerainstitucion_preguntafrecuente` (`idPreguntaFrecuente`),
-        KEY `FK_carrerainstitucion_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
-        KEY `FK_carrerainstitucion_institucion` (`idInstitucion`),
-        CONSTRAINT `FK_carrerainstitucion_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_carrerainstitucion_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_carrerainstitucion_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_carrerainstitucion_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_carrerainstitucion_preguntafrecuente` FOREIGN KEY (`idPreguntaFrecuente`) REFERENCES `preguntafrecuente` (`idPreguntaFrecuente`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.carrerainstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.configuracionbackup
-        CREATE TABLE IF NOT EXISTS `configuracionbackup` (
-        `frecuencia` varchar(50) DEFAULT NULL,
-        `horaEjecucion` time DEFAULT NULL,
-        `cantidadBackupConservar` int(11) DEFAULT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.configuracionbackup: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.contenidomultimedia
-        CREATE TABLE IF NOT EXISTS `contenidomultimedia` (
-        `idContenidoMultimedia` int(11) NOT NULL AUTO_INCREMENT,
-        `enlace` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        `titulo` varchar(50) DEFAULT NULL,
-        `descripcion` varchar(50) DEFAULT NULL,
-        `idCarreraInstitucion` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idContenidoMultimedia`),
-        KEY `FK_contenidomultimedia_carrerainstitucion` (`idCarreraInstitucion`),
-        CONSTRAINT `FK_contenidomultimedia_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.contenidomultimedia: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.estadoacceso
-        CREATE TABLE IF NOT EXISTS `estadoacceso` (
-        `idEstadoAcceso` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreEstadoAcceso` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        PRIMARY KEY (`idEstadoAcceso`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.estadoacceso: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.estadocarrerainstitucion
-        CREATE TABLE IF NOT EXISTS `estadocarrerainstitucion` (
-        `idEstadoCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreEstadoCarreraInstitucion` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        PRIMARY KEY (`idEstadoCarreraInstitucion`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.estadocarrerainstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.estadoinstitucion
-        CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
-        `idEstadoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        PRIMARY KEY (`idEstadoInstitucion`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.estadoinstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.estadousuario
-        CREATE TABLE IF NOT EXISTS `estadousuario` (
-        `idEstadoUsuario` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreEstadoUsuario` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        PRIMARY KEY (`idEstadoUsuario`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.estadousuario: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.genero
-        CREATE TABLE IF NOT EXISTS `genero` (
-        `idGenero` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreGenero` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idGenero`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.genero: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.grupo
-        CREATE TABLE IF NOT EXISTS `grupo` (
-        `idGrupo` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreGrupo` varchar(50) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `descripcion` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idGrupo`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.grupo: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.historialabm
-        CREATE TABLE IF NOT EXISTS `historialabm` (
-        `idHistorialABM` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaHistorial` datetime DEFAULT NULL,
-        `idTipoAccion` int(11) DEFAULT NULL,
-        `idModalidadCarreraInstitucion` int(11) DEFAULT NULL,
-        `idLocalidad` int(11) DEFAULT NULL,
-        `idGrupo` int(11) DEFAULT NULL,
-        `idProvincia` int(11) DEFAULT NULL,
-        `idPermiso` int(11) DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        `idAptitud` int(11) DEFAULT NULL,
-        `idPermisoGrupo` int(11) DEFAULT NULL,
-        `idCarrera` int(11) DEFAULT NULL,
-        `idEstadoAcceso` int(11) DEFAULT NULL,
-        `idGenero` int(11) DEFAULT NULL,
-        `idEstadoCarreraInstitucion` int(11) DEFAULT NULL,
-        `idEstadoUsuario` int(11) DEFAULT NULL,
-        `idPais` int(11) DEFAULT NULL,
-        `idTipoInstitucion` int(11) DEFAULT NULL,
-        `idTipoCarrera` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idHistorialABM`),
-        KEY `FK_historialabm_tipoaccion` (`idTipoAccion`),
-        KEY `FK_historialabm_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
-        KEY `FK_historialabm_localidad` (`idLocalidad`),
-        KEY `FK_historialabm_grupo` (`idGrupo`),
-        KEY `FK_historialabm_provincia` (`idProvincia`),
-        KEY `FK_historialabm_permiso` (`idPermiso`),
-        KEY `FK_historialabm_usuario` (`idUsuario`),
-        KEY `FK_historialabm_aptitud` (`idAptitud`),
-        KEY `FK_historialabm_permisogrupo` (`idPermisoGrupo`),
-        KEY `FK_historialabm_carrera` (`idCarrera`),
-        KEY `FK_historialabm_estadoacceso` (`idEstadoAcceso`),
-        KEY `FK_historialabm_genero` (`idGenero`),
-        KEY `FK_historialabm_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
-        KEY `FK_historialabm_estadousuario` (`idEstadoUsuario`),
-        KEY `FK_historialabm_pais` (`idPais`),
-        KEY `FK_historialabm_tipoinstitucion` (`idTipoInstitucion`),
-        KEY `FK_historialabm_tipocarrera` (`idTipoCarrera`),
-        CONSTRAINT `FK_historialabm_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_estadoacceso` FOREIGN KEY (`idEstadoAcceso`) REFERENCES `estadoacceso` (`idEstadoAcceso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_estadousuario` FOREIGN KEY (`idEstadoUsuario`) REFERENCES `estadousuario` (`idEstadoUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_genero` FOREIGN KEY (`idGenero`) REFERENCES `genero` (`idGenero`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_pais` FOREIGN KEY (`idPais`) REFERENCES `pais` (`idPais`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_permisogrupo` FOREIGN KEY (`idPermisoGrupo`) REFERENCES `permisogrupo` (`idPermisoGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_provincia` FOREIGN KEY (`idProvincia`) REFERENCES `provincia` (`idProvincia`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_tipoaccion` FOREIGN KEY (`idTipoAccion`) REFERENCES `tipoaccion` (`idTipoAccion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_tipocarrera` FOREIGN KEY (`idTipoCarrera`) REFERENCES `tipocarrera` (`idTipoCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialabm_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.historialabm: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.historialacceso
-        CREATE TABLE IF NOT EXISTS `historialacceso` (
-        `idHistorial` int(11) NOT NULL AUTO_INCREMENT,
-        `fecha` datetime DEFAULT NULL,
-        `ipAcceso` int(11) DEFAULT NULL,
-        `navegador` varchar(50) DEFAULT NULL,
-        `idEstadoAcceso` int(11) DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idHistorial`),
-        KEY `FK_historialacceso_estadoacceso` (`idEstadoAcceso`),
-        KEY `FK_historialacceso_usuario` (`idUsuario`),
-        CONSTRAINT `FK_historialacceso_estadoacceso` FOREIGN KEY (`idEstadoAcceso`) REFERENCES `estadoacceso` (`idEstadoAcceso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_historialacceso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.historialacceso: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.institucion
-        CREATE TABLE IF NOT EXISTS `institucion` (
-        `idInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `anioFundacion` int(11) DEFAULT NULL,
-        `codigoPostal` int(11) DEFAULT NULL,
-        `nombreInstitucion` varchar(50) DEFAULT NULL,
-        `CUIT` int(11) DEFAULT NULL,
-        `direccion` varchar(50) DEFAULT NULL,
-        `fechaAlta` datetime DEFAULT NULL,
-        `siglaInstitucion` varchar(50) DEFAULT NULL,
-        `telefono` varchar(50) DEFAULT NULL,
-        `mail` varchar(50) DEFAULT NULL,
-        `sitioWeb` varchar(50) DEFAULT NULL,
-        `urlLogo` varchar(50) DEFAULT NULL,
-        `idTipoInstitucion` int(11) DEFAULT NULL,
-        `idLocalidad` int(11) DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idInstitucion`),
-        KEY `FK_institucion_tipoinstitucion` (`idTipoInstitucion`),
-        KEY `FK_institucion_localidad` (`idLocalidad`),
-        KEY `FK_institucion_usuario` (`idUsuario`),
-        CONSTRAINT `FK_institucion_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_institucion_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_institucion_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.institucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.institucionestado
-        CREATE TABLE IF NOT EXISTS `institucionestado` (
-        `idinstitucionEstado` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaInicio` datetime DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `idEstadoInstitucion` int(11) DEFAULT NULL,
-        `idInstitucion` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idinstitucionEstado`),
-        KEY `FK_institucionestado_estadoinstitucion` (`idEstadoInstitucion`),
-        KEY `FK_institucionestado_institucion` (`idInstitucion`),
-        CONSTRAINT `FK_institucionestado_estadoinstitucion` FOREIGN KEY (`idEstadoInstitucion`) REFERENCES `estadoinstitucion` (`idEstadoInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_institucionestado_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.institucionestado: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.interesusuariocarrera
-        CREATE TABLE IF NOT EXISTS `interesusuariocarrera` (
-        `fechaAlta` datetime DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        `idCarreraInstitucion` int(11) DEFAULT NULL,
-        KEY `FK_interesusuariocarrera_usuario` (`idUsuario`),
-        KEY `FK_interesusuariocarrera_carrerainstitucion` (`idCarreraInstitucion`),
-        CONSTRAINT `FK_interesusuariocarrera_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_interesusuariocarrera_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.interesusuariocarrera: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.localidad
-        CREATE TABLE IF NOT EXISTS `localidad` (
-        `idLocalidad` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreLocalidad` varchar(50) DEFAULT NULL,
-        `idProvincia` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idLocalidad`),
-        KEY `FK_localidad_provincia` (`idProvincia`),
-        CONSTRAINT `FK_localidad_provincia` FOREIGN KEY (`idProvincia`) REFERENCES `provincia` (`idProvincia`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.localidad: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.modalidadcarrerainstitucion
-        CREATE TABLE IF NOT EXISTS `modalidadcarrerainstitucion` (
-        `idModalidadCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreModalidad` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idModalidadCarreraInstitucion`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.modalidadcarrerainstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.pais
-        CREATE TABLE IF NOT EXISTS `pais` (
-        `idPais` int(11) NOT NULL AUTO_INCREMENT,
-        `nombrePais` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idPais`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.pais: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.permiso
-        CREATE TABLE IF NOT EXISTS `permiso` (
-        `idPermiso` int(11) NOT NULL AUTO_INCREMENT,
-        `nombrePermiso` varchar(50) DEFAULT NULL,
-        `descripcion` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idPermiso`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.permiso: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.permisogrupo
-        CREATE TABLE IF NOT EXISTS `permisogrupo` (
-        `idPermisoGrupo` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        `idGrupo` int(11) DEFAULT NULL,
-        `idPermiso` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idPermisoGrupo`),
-        KEY `FK_permisogrupo_grupo` (`idGrupo`),
-        KEY `FK_permisogrupo_permiso` (`idPermiso`),
-        CONSTRAINT `FK_permisogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_permisogrupo_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.permisogrupo: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.preguntafrecuente
-        CREATE TABLE IF NOT EXISTS `preguntafrecuente` (
-        `idPreguntaFrecuente` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaFin` datetime DEFAULT NULL,
-        `nombrePregunta` varchar(50) DEFAULT NULL,
-        `respuesta` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idPreguntaFrecuente`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.preguntafrecuente: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.provincia
-        CREATE TABLE IF NOT EXISTS `provincia` (
-        `idProvincia` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreProvincia` varchar(50) DEFAULT NULL,
-        `idPais` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idProvincia`),
-        KEY `FK_provincia_pais` (`idPais`),
-        CONSTRAINT `FK_provincia_pais` FOREIGN KEY (`idPais`) REFERENCES `pais` (`idPais`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.provincia: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.test
-        CREATE TABLE IF NOT EXISTS `test` (
-        `idResultadoCuestionario` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaResultadoCuestionario` datetime DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idResultadoCuestionario`),
-        KEY `FK_test_usuario` (`idUsuario`),
-        CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.test: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.testaptitud
-        CREATE TABLE IF NOT EXISTS `testaptitud` (
-        `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
-        `afinidadAptitud` double DEFAULT NULL,
-        `idAptitud` int(11) DEFAULT NULL,
-        `idTest` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idResultadoAptitud`),
-        KEY `FK_testaptitud_aptitud` (`idAptitud`),
-        KEY `FK_testaptitud_test` (`idTest`),
-        CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idResultadoCuestionario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.testaptitud: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.testcarrerainstitucion
-        CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
-        `afinidadCarrera` double DEFAULT NULL,
-        `idTest` int(11) DEFAULT NULL,
-        `idCarreraInstitucion` int(11) DEFAULT NULL,
-        KEY `FK_testcarrerainstitucion_test` (`idTest`),
-        KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
-        CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idResultadoCuestionario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.testcarrerainstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.tipoaccion
-        CREATE TABLE IF NOT EXISTS `tipoaccion` (
-        `idTipoAccion` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreTipoAccion` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idTipoAccion`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.tipoaccion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.tipocarrera
-        CREATE TABLE IF NOT EXISTS `tipocarrera` (
-        `idTipoCarrera` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreTipoCarrera` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idTipoCarrera`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.tipocarrera: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.tipoinstitucion
-        CREATE TABLE IF NOT EXISTS `tipoinstitucion` (
-        `idTipoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-        `nombreTipoInstitucion` varchar(50) DEFAULT NULL,
-        PRIMARY KEY (`idTipoInstitucion`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.tipoinstitucion: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.usuario
-        CREATE TABLE IF NOT EXISTS `usuario` (
-        `idUsuario` int(11) NOT NULL AUTO_INCREMENT,
-        `mail` varchar(50) DEFAULT NULL,
-        `dni` int(11) DEFAULT NULL,
-        `apellido` varchar(50) DEFAULT NULL,
-        `nombre` varchar(50) DEFAULT NULL,
-        `contrasena` varchar(50) DEFAULT NULL,
-        `fechaNac` datetime DEFAULT NULL,
-        `vencimientoContrasena` datetime DEFAULT NULL,
-        `idGenero` int(11) DEFAULT NULL,
-        `idLocalidad` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idUsuario`),
-        KEY `FK_usuario_genero` (`idGenero`),
-        KEY `FK_usuario_localidad` (`idLocalidad`),
-        CONSTRAINT `FK_usuario_genero` FOREIGN KEY (`idGenero`) REFERENCES `genero` (`idGenero`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_usuario_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.usuario: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.usuarioestado
-        CREATE TABLE IF NOT EXISTS `usuarioestado` (
-        `idUsuarioEstado` int(11) NOT NULL AUTO_INCREMENT,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        `idEstadoUsuario` int(11) DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        PRIMARY KEY (`idUsuarioEstado`),
-        KEY `FK_usuarioestado_estadousuario` (`idEstadoUsuario`),
-        KEY `FK_usuarioestado_usuario` (`idUsuario`),
-        CONSTRAINT `FK_usuarioestado_estadousuario` FOREIGN KEY (`idEstadoUsuario`) REFERENCES `estadousuario` (`idEstadoUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_usuarioestado_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.usuarioestado: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.usuariogrupo
-        CREATE TABLE IF NOT EXISTS `usuariogrupo` (
-        `idUsuarioGrupo` int(11) NOT NULL AUTO_INCREMENT,
-        `idUsuario` int(11) DEFAULT NULL,
-        `idGrupo` int(11) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        PRIMARY KEY (`idUsuarioGrupo`),
-        KEY `FK_usuariogrupo_usuario` (`idUsuario`),
-        KEY `FK_usuariogrupo_grupo` (`idGrupo`),
-        CONSTRAINT `FK_usuariogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_usuariogrupo_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.usuariogrupo: ~0 rows (aproximadamente)
-
-        -- Volcando estructura para tabla ovo.usuariopermiso
-        CREATE TABLE IF NOT EXISTS `usuariopermiso` (
-        `idUsuarioPermiso` int(11) NOT NULL AUTO_INCREMENT,
-        `idPermiso` int(11) DEFAULT NULL,
-        `idUsuario` int(11) DEFAULT NULL,
-        `fechaFin` datetime DEFAULT NULL,
-        `fechaInicio` datetime DEFAULT NULL,
-        PRIMARY KEY (`idUsuarioPermiso`),
-        KEY `FK_usuariopermiso_permiso` (`idPermiso`),
-        KEY `FK_usuariopermiso_usuario` (`idUsuario`),
-        CONSTRAINT `FK_usuariopermiso_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-        CONSTRAINT `FK_usuariopermiso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-        -- Volcando datos para la tabla ovo.usuariopermiso: ~0 rows (aproximadamente)
-
-        /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
-        /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
-        /*!40014 SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1) */;
-        /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-        /*!40111 SET SQL_NOTES=IFNULL(@OLD_SQL_NOTES, 1) */;
-    """)
-    conn.commit()
-    conn.close()
-
-# -----------------------------------JWT-----------------------------------
 SECRET_KEY = "ghwgdgHHYushHg1231SDAAa"
 
-# Función para generar un token JWT
 def generate_token(user_id):
-    payload = {
-        "user_id": user_id,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
-    }
+    payload = {"user_id": user_id, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
-# Decorador para proteger rutas con autenticación JWT
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -612,7 +48,7 @@ def token_required(f):
             return jsonify({"errorCode": "AUTH", "message": "Token es requerido"}), 401
         try:
             if token == "Hola":
-                current_user = 1  # Usuario de prueba
+                current_user = 1
             else:
                 data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 current_user = data.get("user_id")
@@ -4505,14 +3941,2053 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
             pass
 
 
+# # ============================ Gestión de Preguntas Frecuentes por Carrera (US019) ============================
+# Se reutiliza la tabla existente `preguntafrecuente` y el campo
+# `idPreguntaFrecuente` de `carrerainstitucion` (un FAQ por carrera-institución).
+# Si en el futuro se requieren múltiples FAQs por carrera, habría que normalizar.
 
+def _career_institution_owned(conn, current_user_id: int, id_ci: int):
+    """Devuelve idInstitucion si la carrera pertenece a la institución del usuario."""
+    cur = conn.cursor()
+    cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s LIMIT 1", (current_user_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    id_inst = row[0]
+    cur.execute(
+        "SELECT 1 FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s",
+        (id_ci, id_inst)
+    )
+    return id_inst if cur.fetchone() else None
+
+# Listar FAQ de una carrera-institución (0 o 1)
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs', methods=['GET'])
+@token_required
+def my_institution_career_faq_get(current_user_id: int, id_ci: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        if not _career_institution_owned(conn, current_user_id, id_ci):
+            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT pf.idPreguntaFrecuente, pf.nombrePregunta, pf.respuesta, pf.fechaFin
+            FROM carrerainstitucion ci
+            JOIN preguntafrecuente pf ON pf.idPreguntaFrecuente = ci.idPreguntaFrecuente
+            WHERE ci.idCarreraInstitucion=%s AND ci.idPreguntaFrecuente IS NOT NULL
+              AND (pf.fechaFin IS NULL OR pf.fechaFin > NOW())
+            """,
+            (id_ci,)
+        )
+        row = cur.fetchone()
+        data = ([] if not row else [{
+            "idPreguntaFrecuente": row['idPreguntaFrecuente'],
+            "pregunta": row['nombrePregunta'],
+            "respuesta": row['respuesta']
+        }])
+        return jsonify(data), 200
+    except Exception as e:
+        log(f"/institutions/me/careers/{id_ci}/faqs GET error: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "Error al consultar preguntas frecuentes"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception:
+            pass
+
+# Crear FAQ (si ya existe, error)
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs', methods=['POST'])
+@token_required
+def my_institution_career_faq_create(current_user_id: int, id_ci: int):
+    conn = None
+    try:
+        data = request.get_json(silent=True) or {}
+        pregunta = (data.get('pregunta') or data.get('nombrePregunta') or '').strip()
+        respuesta = (data.get('respuesta') or '').strip()
+        if not pregunta or not respuesta:
+            return jsonify({"errorCode": "ERR1", "message": "Datos incompletos"}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        if not _career_institution_owned(conn, current_user_id, id_ci):
+            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
+        cur = conn.cursor()
+        # Verificar si ya tiene FAQ
+        cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return jsonify({"errorCode": "ERR1", "message": "Ya existe una pregunta frecuente"}), 400
+        # Insertar FAQ
+        cur.execute(
+            "INSERT INTO preguntafrecuente (fechaFin, nombrePregunta, respuesta) VALUES (NULL,%s,%s)",
+            (pregunta, respuesta)
+        )
+        conn.commit()
+        cur.execute("SELECT LAST_INSERT_ID()")
+        id_faq = cur.fetchone()[0]
+        # Asociar a la carrera
+        cur.execute("UPDATE carrerainstitucion SET idPreguntaFrecuente=%s WHERE idCarreraInstitucion=%s", (id_faq, id_ci))
+        conn.commit()
+        return jsonify({"ok": True, "idPreguntaFrecuente": int(id_faq)}), 201
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"/institutions/me/careers/{id_ci}/faqs POST error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR1", "message": "No se pudo crear la pregunta frecuente"}), 400
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# Actualizar FAQ existente
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs/<int:id_faq>', methods=['PUT'])
+@token_required
+def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: int):
+    conn = None
+    try:
+        data = request.get_json(silent=True) or {}
+        pregunta = data.get('pregunta') or data.get('nombrePregunta')
+        respuesta = data.get('respuesta')
+        if pregunta is None and respuesta is None:
+            return jsonify({"errorCode": "ERR1", "message": "Sin datos para actualizar"}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        if not _career_institution_owned(conn, current_user_id, id_ci):
+            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
+        cur = conn.cursor()
+        # Validar pertenencia del FAQ
+        cur.execute(
+            "SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s",
+            (id_ci,)
+        )
+        row = cur.fetchone()
+        if not row or not row[0] or int(row[0]) != id_faq:
+            return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
+        sets = []
+        params = []
+        if pregunta is not None:
+            p = pregunta.strip()
+            if not p:
+                return jsonify({"errorCode": "ERR1", "message": "Pregunta inválida"}), 400
+            sets.append("nombrePregunta=%s")
+            params.append(p)
+        if respuesta is not None:
+            r = respuesta.strip()
+            if not r:
+                return jsonify({"errorCode": "ERR1", "message": "Respuesta inválida"}), 400
+            sets.append("respuesta=%s")
+            params.append(r)
+        if not sets:
+            return jsonify({"errorCode": "ERR1", "message": "Sin datos para actualizar"}), 400
+        cur.execute(f"UPDATE preguntafrecuente SET {', '.join(sets)} WHERE idPreguntaFrecuente=%s", tuple(params + [id_faq]))
+        conn.commit()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"/institutions/me/careers/{id_ci}/faqs/{id_faq} PUT error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR1", "message": "No se pudo actualizar la pregunta frecuente"}), 400
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# Eliminar (desasociar + baja lógica) FAQ
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs/<int:id_faq>', methods=['DELETE'])
+@token_required
+def my_institution_career_faq_delete(current_user_id: int, id_ci: int, id_faq: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        if not _career_institution_owned(conn, current_user_id, id_ci):
+            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
+        cur = conn.cursor()
+        cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
+        row = cur.fetchone()
+        if not row or not row[0] or int(row[0]) != id_faq:
+            return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
+        # Baja lógica + desasociar
+        cur.execute("UPDATE preguntafrecuente SET fechaFin = NOW() WHERE idPreguntaFrecuente=%s", (id_faq,))
+        cur.execute("UPDATE carrerainstitucion SET idPreguntaFrecuente=NULL WHERE idCarreraInstitucion=%s", (id_ci,))
+        conn.commit()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"/institutions/me/careers/{id_ci}/faqs/{id_faq} DELETE error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR1", "message": "No se pudo eliminar la pregunta frecuente"}), 400
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+
+
+# ============================ Material Complementario (US020) ============================
+# Requisitos:
+# - Solo representante institucional (mismo criterio que US018: carrera debe pertenecer a su institución)
+# - Campos: titulo (obligatorio), descripcion (opcional), enlace o archivo (en este backend simple usaremos campo enlace)
+# - Tabla reutilizada: contenidomultimedia (ya utilizada para mostrar en detalle de carrera)
+#   Asumimos columnas: idContenidoMultimedia, titulo, descripcion, enlace, fechaInicio, fechaFin, idCarreraInstitucion
+# - Validaciones de error:
+#   ERR1: Título vacío -> "Debe ingresar un título para el material."
+#   ERR2: Enlace vacío o inválido -> "Debe adjuntar un archivo o ingresar un enlace válido."
+#   ERR3: Error técnico al guardar -> "No se pudieron guardar los cambios. Intente nuevamente."
+#   ERR4: Error técnico al eliminar -> "No se pudo eliminar el material complementario. Intente nuevamente."
+
+def _my_inst_id(conn, user_id:int):
+    cur = conn.cursor()
+    cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s ORDER BY idInstitucion LIMIT 1", (user_id,))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+def _ci_belongs(conn, id_ci:int, id_inst:int):
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s", (id_ci, id_inst))
+    return cur.fetchone() is not None
+
+# Listar material complementario de una carrera propia
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials', methods=['GET'])
+@token_required
+def materials_list(current_user_id:int, id_ci:int):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT idContenidoMultimedia, titulo, descripcion, enlace, fechaInicio
+            FROM contenidomultimedia
+            WHERE idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())
+            ORDER BY fechaInicio DESC, idContenidoMultimedia DESC
+            """, (id_ci,)
+        )
+        rows = cur.fetchall() or []
+        data=[]
+        for r in rows:
+            data.append({
+                "id": r['idContenidoMultimedia'],
+                "titulo": r['titulo'],
+                "descripcion": r.get('descripcion'),
+                "enlace": r.get('enlace'),
+                "fecha": (r.get('fechaInicio').isoformat(sep=' ') if r.get('fechaInicio') else None),
+                "editPath": f"/api/v1/institutions/me/careers/{id_ci}/materials/{r['idContenidoMultimedia']}",
+                "deletePath": f"/api/v1/institutions/me/careers/{id_ci}/materials/{r['idContenidoMultimedia']}"
+            })
+        return jsonify({
+            "materiales": data,
+            "agregarPath": f"/api/v1/institutions/me/careers/{id_ci}/materials"
+        }), 200
+    except Exception as e:
+        log(f"US020 LIST error: {e}\n{traceback.format_exc()}")
+        return jsonify({"message":"Error al listar material complementario"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# Crear material complementario
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials', methods=['POST'])
+@token_required
+def materials_create(current_user_id:int, id_ci:int):
+    conn=None
+    try:
+        data = request.get_json(silent=True) or {}
+        titulo = (data.get('titulo') or '').strip()
+        descripcion = (data.get('descripcion') or '').strip() or None
+        enlace = (data.get('enlace') or '').strip()
+        if not titulo:
+            return jsonify({"errorCode":"ERR1","message":"Debe ingresar un título para el material."}), 400
+        # Enlace básico: permitir http(s) o ruta simple de archivo (simples heurísticas)
+        if not enlace or not re.match(r'^(https?://|/|[A-Za-z0-9._-]+)', enlace):
+            return jsonify({"errorCode":"ERR2","message":"Debe adjuntar un archivo o ingresar un enlace válido."}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO contenidomultimedia (titulo, descripcion, enlace, fechaInicio, fechaFin, idCarreraInstitucion)
+            VALUES (%s,%s,%s,NOW(),NULL,%s)""",
+            (titulo, descripcion, enlace, id_ci)
+        )
+        conn.commit()
+        return jsonify({"ok":True, "message":"Se guardó correctamente el nuevo contenido Multimedia"}), 201
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"US020 CREATE error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR3","message":"No se pudieron guardar los cambios. Intente nuevamente."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# Editar material complementario
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials/<int:id_mat>', methods=['PUT'])
+@token_required
+def materials_update(current_user_id:int, id_ci:int, id_mat:int):
+    conn=None
+    try:
+        data = request.get_json(silent=True) or {}
+        titulo = data.get('titulo')
+        descripcion = data.get('descripcion') if 'descripcion' in data else None
+        enlace = data.get('enlace') if 'enlace' in data else None
+        # Validaciones si se actualizan
+        if titulo is not None and (not isinstance(titulo,str) or titulo.strip()== ''):
+            return jsonify({"errorCode":"ERR1","message":"Debe ingresar un título para el material."}), 400
+        if enlace is not None and (not enlace or not re.match(r'^(https?://|/|[A-Za-z0-9._-]+)', enlace.strip())):
+            return jsonify({"errorCode":"ERR2","message":"Debe adjuntar un archivo o ingresar un enlace válido."}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        if not cur.fetchone():
+            return jsonify({"errorCode":"ERR1","message":"Material no encontrado"}), 404
+        sets=[]; params=[]
+        if titulo is not None:
+            sets.append("titulo=%s"); params.append(titulo.strip())
+        if descripcion is not None:
+            sets.append("descripcion=%s"); params.append(descripcion.strip() if isinstance(descripcion,str) and descripcion.strip()!='' else None)
+        if enlace is not None:
+            sets.append("enlace=%s"); params.append(enlace.strip())
+        if not sets:
+            return jsonify({"errorCode":"ERR1","message":"Debe ingresar un título para el material."}), 400
+        sql = f"UPDATE contenidomultimedia SET {', '.join(sets)} WHERE idContenidoMultimedia=%s"
+        params.append(id_mat)
+        cur.execute(sql, tuple(params))
+        conn.commit()
+        return jsonify({"ok":True, "message":"Se guardó correctamente el nuevo contenido Multimedia"}), 200
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"US020 UPDATE error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR3","message":"No se pudieron guardar los cambios. Intente nuevamente."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# Eliminar material complementario (baja lógica fechaFin)
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials/<int:id_mat>', methods=['DELETE'])
+@token_required
+def materials_delete(current_user_id:int, id_ci:int, id_mat:int):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        if not cur.fetchone():
+            return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
+        cur.execute("UPDATE contenidomultimedia SET fechaFin=NOW() WHERE idContenidoMultimedia=%s", (id_mat,))
+        conn.commit()
+        return jsonify({"ok":True}), 200
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"US020 DELETE error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# ============================ Relación de Carreras con Aptitudes (US021) ============================
+# Nota importante de esquema: la tabla `aptitudcarrera` en el script actual referencia `carrera` mediante el campo
+# `idCarreraInstitucion` (FK a carrera.idCarrera). Sin embargo la historia requiere asociar aptitudes a una carrera-institución
+# (carrerainstitucion). Para no alterar el esquema existente, se implementa la asociación a nivel de carrera base
+# (carrerainstitucion.idCarrera). Es decir: TODAS las instituciones que dicten la misma carrera base compartirán la misma
+# configuración de aptitudes mientras no se corrija/ajuste el modelo relacional.
+# Endpoints:
+#   GET  /api/v1/institutions/me/careers/<id_ci>/aptitudes    -> listado de aptitudes (0-99)
+#   PUT  /api/v1/institutions/me/careers/<id_ci>/aptitudes    -> guardar pesos (reemplaza todos)
+# Validaciones (al guardar):
+#   ERR01: Al menos una aptitud > 50
+#   ERR02: Al menos 3 aptitudes >= 25
+#   ERR03: No más de 3 aptitudes con puntaje máximo (99)
+#   ERR04: No todas las aptitudes con el mismo puntaje
+#   ERR05: Máx 50% con valor 0
+
+def _get_base_carrera_id(conn, id_ci:int):
+    cur = conn.cursor()
+    cur.execute("SELECT idCarrera FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/aptitudes', methods=['GET'])
+@token_required
+def career_aptitudes_list(current_user_id:int, id_ci:int):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+        id_carrera_base = _get_base_carrera_id(conn, id_ci)
+        if not id_carrera_base:
+            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+        cur = conn.cursor(dictionary=True)
+        # Traer todas las aptitudes con su valor (si existe) para la carrera base
+        cur.execute(
+            """
+            SELECT a.idAptitud, a.nombreAptitud, COALESCE(ac.afinidadCarrera, 0) AS puntaje
+            FROM aptitud a
+            LEFT JOIN aptitudcarrera ac ON ac.idAptitud = a.idAptitud AND ac.idCarreraInstitucion = %s
+            WHERE (a.fechaBaja IS NULL OR a.fechaBaja > NOW())
+            ORDER BY a.nombreAptitud
+            """,
+            (id_carrera_base,)
+        )
+        rows = cur.fetchall() or []
+        data = [
+            {
+                "id": r['idAptitud'],
+                "nombre": r['nombreAptitud'],
+                "puntaje": int(r['puntaje']) if r['puntaje'] is not None else 0
+            } for r in rows
+        ]
+        return jsonify({
+            "aptitudes": data,
+            "guardarPath": f"/api/v1/institutions/me/careers/{id_ci}/aptitudes"
+        }), 200
+    except Exception as e:
+        log(f"US021 LIST error: {e}\n{traceback.format_exc()}")
+        return jsonify({"message":"Error al consultar aptitudes"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/institutions/me/careers/<int:id_ci>/aptitudes', methods=['PUT'])
+@token_required
+def career_aptitudes_save(current_user_id:int, id_ci:int):
+    conn=None
+    try:
+        body = request.get_json(silent=True) or {}
+        aptitudes = body.get('aptitudes')
+        if not isinstance(aptitudes, list) or not aptitudes:
+            return jsonify({"errorCode":"ERR01","message":"Al menos una aptitud debe tener una puntuación superior a 50."}), 400
+        # Normalizar lista -> [(id, score)]
+        parsed=[]
+        try:
+            for item in aptitudes:
+                if not isinstance(item, dict):
+                    raise ValueError()
+                id_ap = int(item.get('idAptitud') if 'idAptitud' in item else item.get('id') )
+                puntaje = int(item.get('puntaje') if 'puntaje' in item else item.get('afinidad') )
+                if puntaje < 0 or puntaje > 99:
+                    raise ValueError()
+                parsed.append((id_ap, puntaje))
+        except Exception:
+            return jsonify({"errorCode":"ERR01","message":"Datos de aptitudes inválidos"}), 400
+        scores = [p for _,p in parsed]
+        if not any(s>50 for s in scores):
+            return jsonify({"errorCode":"ERR01","message":"Al menos una aptitud debe tener una puntuación superior a 50."}), 400
+        if sum(1 for s in scores if s>=25) < 3:
+            return jsonify({"errorCode":"ERR02","message":"Al menos 3 aptitudes deben tener una puntuación de 25 o superior."}), 400
+        max_score = max(scores)
+        if sum(1 for s in scores if s==max_score) > 3:
+            return jsonify({"errorCode":"ERR03","message":"No pueden haber más de 3 aptitudes con puntaje máximo."}), 400
+        if all(s==scores[0] for s in scores):
+            return jsonify({"errorCode":"ERR04","message":"Las aptitudes no pueden tener todas el mismo puntaje."}), 400
+        if sum(1 for s in scores if s==0) > len(scores)/2:
+            return jsonify({"errorCode":"ERR05","message":"No puede haber más del 50% de las aptitudes con valor 0."}), 400
+
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
+            return jsonify({"errorCode":"ERR01","message":"Carrera no encontrada"}), 404
+        id_carrera_base = _get_base_carrera_id(conn, id_ci)
+        if not id_carrera_base:
+            return jsonify({"errorCode":"ERR01","message":"Carrera no encontrada"}), 404
+
+        cur = conn.cursor()
+        # Validar que las aptitudes existan
+        ids = [iid for iid,_ in parsed]
+        in_clause = ','.join(['%s']*len(ids))
+        cur.execute(f"SELECT COUNT(*) FROM aptitud WHERE idAptitud IN ({in_clause})", tuple(ids))
+        if cur.fetchone()[0] != len(ids):
+            return jsonify({"errorCode":"ERR01","message":"Alguna aptitud no existe"}), 400
+        # Reemplazar completamente
+        cur.execute("DELETE FROM aptitudcarrera WHERE idCarreraInstitucion=%s", (id_carrera_base,))
+        for aid, score in parsed:
+            cur.execute(
+                "INSERT INTO aptitudcarrera (afinidadCarrera, idAptitud, idCarreraInstitucion) VALUES (%s,%s,%s)",
+                (score, aid, id_carrera_base)
+            )
+        conn.commit()
+        return jsonify({"ok":True, "message":"Aptitudes actualizadas"}), 200
+    except Exception as e:
+        try:
+            if conn: conn.rollback()
+        except Exception: pass
+        log(f"US021 SAVE error: {e}\n{traceback.format_exc()}")
+        # Se retorna ERR03 como error técnico general aunque no esté explícito (solo validaciones enumeradas)
+        return jsonify({"errorCode":"ERR03","message":"Error al guardar aptitudes"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+
+
+# ============================ Realización de Test (US022) ============================
+# Implementación simplificada en memoria (
+
+_TEST_STORE = {}
+_TEST_SEQ = 1
+
+def _detect_current_user_id_optional():
+    token=None
+    if 'Authorization' in request.headers:
+        parts = request.headers['Authorization'].split(' ')
+        if len(parts)==2 and parts[0].lower()=='bearer':
+            token=parts[1]
+    if not token:
+        return None
+    if token=="Hola":
+        return 1
+    try:
+        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return data.get('user_id')
+    except Exception:
+        return None
+
+def _find_active_test_for_user(user_id):
+    for t in _TEST_STORE.values():
+        if t['user_id']==user_id and not t['finished'] and not t['abandoned']:
+            return t
+    return None
+
+def _create_test(user_id, accepted):
+    global _TEST_SEQ
+    tid = _TEST_SEQ
+    _TEST_SEQ += 1
+    now = datetime.datetime.utcnow()
+    obj = {
+        'id': tid,
+        'user_id': user_id,
+        'answers': [],
+        'total': 50,
+        'paused': False,
+        'finished': False,
+        'abandoned': False,
+        'disclaimerAccepted': accepted,
+        'created': now,
+        'lastUpdate': now
+    }
+    _TEST_STORE[tid]=obj
+    return obj
+
+@app.route('/api/v1/tests/start', methods=['POST'])
+def us022_test_start():
+    user_id = _detect_current_user_id_optional()
+    data = request.get_json(silent=True) or {}
+    accept = bool(data.get('acceptPolicies'))
+    existing = _find_active_test_for_user(user_id)
+    if existing:
+        if existing['user_id'] is None and not existing['disclaimerAccepted']:
+            return jsonify({
+                "disclaimer": True,
+                "message": "Debes aceptar las políticas de uso para continuar el test.",
+                "acceptPath": "/api/v1/tests/start"
+            }), 200
+        return jsonify({
+            "idTest": existing['id'],
+            "continuar": True,
+            "nextQuestion": f"Pregunta {len(existing['answers'])+1}",
+            "respondidas": len(existing['answers']),
+            "total": existing['total']
+        }), 200
+    if user_id is None and not accept:
+        temp = _create_test(None, False)
+        return jsonify({
+            "disclaimer": True,
+            "message": "Debes aceptar las políticas de uso para iniciar el test.",
+            "acceptPath": "/api/v1/tests/start",
+            "cancelInfo": {"message": "Si cancelas no podrás continuar ahora."},
+            "tempTestId": temp['id']
+        }), 200
+    t = _create_test(user_id, True if user_id is not None else accept)
+    return jsonify({
+        "idTest": t['id'],
+        "nextQuestion": "Pregunta 1",
+        "respondidas": 0,
+        "total": t['total']
+    }), 201
+
+@app.route('/api/v1/tests/<int:id_test>/answer', methods=['POST'])
+def us022_test_answer(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if t['finished']:
+        return jsonify({"message":"Test ya finalizado"}), 400
+    if t['paused']:
+        return jsonify({"message":"Test pausado"}), 400
+    data = request.get_json(silent=True) or {}
+    ans = (data.get('answer') or '').strip()
+    if not ans:
+        return jsonify({"errorCode":"ERR1","message":"Respuesta vacía"}), 400
+    if data.get('triggerSaveError'):
+        return jsonify({"errorCode":"ERR1","message":"Error al guardar la respuesta. Reintente."}), 500
+    try:
+        t['answers'].append(ans)
+        t['lastUpdate']=datetime.datetime.utcnow()
+    except Exception:
+        return jsonify({"errorCode":"ERR1","message":"Error al guardar la respuesta. Reintente."}), 500
+    if len(t['answers']) >= t['total']:
+        t['finished']=True
+        return jsonify({
+            "completed": True,
+            "message": "Has completado el test. Puedes ver los resultados.",
+            "resultPath": f"/api/v1/tests/{t['id']}/finish"
+        }), 200
+    return jsonify({
+        "ok": True,
+        "nextQuestion": f"Pregunta {len(t['answers'])+1}",
+        "respondidas": len(t['answers']),
+        "total": t['total']
+    }), 200
+
+@app.route('/api/v1/tests/<int:id_test>/progress', methods=['GET'])
+def us022_test_progress(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    return jsonify({
+        "idTest": t['id'],
+        "respondidas": len(t['answers']),
+        "total": t['total'],
+        "paused": t['paused'],
+        "finished": t['finished'],
+        "abandoned": t['abandoned']
+    }), 200
+
+@app.route('/api/v1/tests/<int:id_test>/pause', methods=['POST'])
+def us022_test_pause(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if t['finished']:
+        return jsonify({"message":"Test ya finalizado"}), 400
+    t['paused']=True
+    return jsonify({
+        "paused": True,
+        "message": "Test pausado. Progreso guardado.",
+        "resumePath": f"/api/v1/tests/{id_test}/resume",
+        "saveExitPath": f"/api/v1/tests/{id_test}/save-exit"
+    }), 200
+
+@app.route('/api/v1/tests/<int:id_test>/resume', methods=['POST'])
+def us022_test_resume(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if t['finished']:
+        return jsonify({"message":"Test ya finalizado"}), 400
+    t['paused']=False
+    return jsonify({
+        "paused": False,
+        "nextQuestion": f"Pregunta {len(t['answers'])+1}",
+        "respondidas": len(t['answers']),
+        "total": t['total']
+    }), 200
+
+@app.route('/api/v1/tests/<int:id_test>/save-exit', methods=['POST'])
+def us022_test_save_exit(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if t['finished']:
+        return jsonify({"message":"Test ya finalizado"}), 400
+    t['paused']=True
+    return jsonify({"ok":True, "message":"Progreso guardado. Podrás continuar más tarde."}), 200
+
+@app.route('/api/v1/tests/<int:id_test>/abandon', methods=['POST'])
+def us022_test_abandon(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if t['finished']:
+        return jsonify({"message":"Test ya finalizado"}), 400
+    t['abandoned']=True
+    t['answers']=[]
+    return jsonify({"ok":True, "message":"Test abandonado y respuestas eliminadas."}), 200
+
+@app.route('/api/v1/tests/<int:id_test>/finish', methods=['POST'])
+def us022_test_finish(id_test:int):
+    t = _TEST_STORE.get(id_test)
+    if not t or t['abandoned']:
+        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
+    if not t['finished']:
+        if len(t['answers']) < t['total']:
+            return jsonify({"message":"Aún no completaste todas las preguntas."}), 400
+        t['finished']=True
+    import random as _r
+    aptitudes=[{"nombre":f"Aptitud {i}","puntaje":_r.randint(10,99)} for i in range(1,7)]
+    aptitudes.sort(key=lambda x: x['puntaje'], reverse=True)
+    carreras=[{"carrera":f"Carrera {i}","afinidad":_r.randint(50,100)} for i in range(1,6)]
+    carreras.sort(key=lambda x: x['afinidad'], reverse=True)
+    return jsonify({
+        "idTest": t['id'],
+        "resumen": "Test completado. Estos son tus resultados simulados.",
+        "aptitudes": aptitudes,
+        "carreras": carreras,
+        "volverInicioPath": "/api/v1/tests/start"
+    }), 200
+
+
+# ============================ Tablero de Estadísticas (US023) ============================
+# Filtros comunes: from=YYYY-MM-DD, to=YYYY-MM-DD (requeridos), provinceId (opcional)
+# Validaciones: to <= hoy, from <= to. Caso inválido -> ERR1.
+# Si no hay datos en ninguna métrica solicitada del tablero -> ERR1 (mensaje pedir cambiar filtros).
+# Permiso requerido: ADMIN_PANEL.
+# Limitaciones: Algunas métricas no pueden calcularse por ausencia de columnas (ej: fecha en test / compatibilidades), se devuelven listas vacías.
+
+def _parse_stats_filters():
+    args = request.args
+    f = args.get('from')
+    t = args.get('to')
+    province = args.get('provinceId')
+    if not f or not t:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+    try:
+        from_dt = datetime.datetime.strptime(f, '%Y-%m-%d').date()
+        to_dt = datetime.datetime.strptime(t, '%Y-%m-%d').date()
+        if to_dt > datetime.date.today() or from_dt > to_dt:
+            raise ValueError()
+        province_id = None
+        if province not in (None, '', 'all', 'ALL'):
+            province_id = int(province)
+        return (from_dt, to_dt, province_id), None, None
+    except Exception:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+
+def _province_clause(alias_user='u', alias_inst='i'):
+    # Genera cláusula y join según si filtramos por provincia para usuarios o instituciones.
+    # Para usuarios: usuario -> localidad l -> provincia pr
+    return (
+        f" LEFT JOIN localidad l_u ON l_u.idLocalidad = {alias_user}.idLocalidad"
+        f" LEFT JOIN provincia pr_u ON pr_u.idProvincia = l_u.idProvincia ",
+        " pr_u.idProvincia = %s "
+    )
+
+@app.route('/api/v1/admin/stats/system', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_stats_system(current_user_id):
+    filters, err_resp, err_code = _parse_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    from_dt, to_dt, province_id = filters
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Usuarios por tipo (grupo)
+        province_join, province_condition = _province_clause()
+        params_users = [from_dt, to_dt]
+        province_filter_sql = ''
+        if province_id is not None:
+            province_filter_sql = f" AND {province_condition}"
+            params_users.append(province_id)
+        cur.execute(
+            f"""
+            SELECT g.nombreGrupo AS tipo, COUNT(DISTINCT ug.idUsuario) AS total
+            FROM usuariogrupo ug
+            JOIN grupo g ON g.idGrupo = ug.idGrupo
+            JOIN usuario u ON u.idUsuario = ug.idUsuario
+            {province_join}
+            JOIN usuarioestado ue ON ue.idUsuario = u.idUsuario
+            WHERE (ug.fechaFin IS NULL OR ug.fechaFin > NOW())
+              AND ue.fechaInicio BETWEEN %s AND %s
+              {province_filter_sql}
+            GROUP BY g.nombreGrupo
+            ORDER BY g.nombreGrupo
+            """,
+            tuple(params_users)
+        )
+        usuarios_por_tipo = cur.fetchall() or []
+
+        # Evolución registros (por mes) usando usuarioestado.fechaInicio
+        params_evo = [from_dt, to_dt]
+        if province_id is not None:
+            params_evo.append(province_id)
+        cur.execute(
+            f"""
+            SELECT DATE_FORMAT(ue.fechaInicio, '%Y-%m') AS periodo, COUNT(DISTINCT ue.idUsuario) AS total
+            FROM usuarioestado ue
+            JOIN usuario u ON u.idUsuario = ue.idUsuario
+            {province_join}
+            WHERE ue.fechaInicio BETWEEN %s AND %s
+            {province_filter_sql}
+            GROUP BY periodo
+            ORDER BY periodo
+            """,
+            tuple(params_evo)
+        )
+        evolucion_registros = cur.fetchall() or []
+
+        # Tests completados por mes -> no fecha en tabla 'test'; devolver vacío
+        tests_completados = []
+
+        # Total carreras cargadas por tipo (carrerainstitucion.fechaInicio)
+        params_carr = [from_dt, to_dt]
+        carr_province_join = " LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion LEFT JOIN localidad l_i ON l_i.idLocalidad = i.idLocalidad LEFT JOIN provincia pr_i ON pr_i.idProvincia = l_i.idProvincia "
+        carr_province_filter = ''
+        if province_id is not None:
+            carr_province_filter = ' AND pr_i.idProvincia = %s'
+            params_carr.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COALESCE(tc.nombreTipoCarrera,'Sin Tipo') AS tipo, COUNT(DISTINCT ci.idCarreraInstitucion) AS total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            {carr_province_join}
+            WHERE ci.fechaInicio BETWEEN %s AND %s {carr_province_filter}
+            GROUP BY tipo
+            ORDER BY tipo
+            """,
+            tuple(params_carr)
+        )
+        carreras_por_tipo = cur.fetchall() or []
+
+        # Estado de solicitudes de Instituciones (último estado dentro del periodo)
+        params_inst = [from_dt, to_dt]
+        inst_province_join = " LEFT JOIN institucion i ON i.idInstitucion = ie.idInstitucion LEFT JOIN localidad l2 ON l2.idLocalidad = i.idLocalidad LEFT JOIN provincia pr2 ON pr2.idProvincia = l2.idProvincia "
+        inst_province_filter = ''
+        if province_id is not None:
+            inst_province_filter = ' AND pr2.idProvincia = %s'
+            params_inst.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COALESCE(ei.nombreEstadoInstitucion,'Desconocido') AS estado, COUNT(*) AS total
+            FROM (
+                SELECT ie1.idInstitucion, ie1.idEstadoInstitucion
+                FROM institucionestado ie1
+                JOIN (
+                    SELECT idInstitucion, MAX(fechaInicio) maxFecha
+                    FROM institucionestado
+                    WHERE fechaInicio BETWEEN %s AND %s
+                    GROUP BY idInstitucion
+                ) last ON last.idInstitucion = ie1.idInstitucion AND last.maxFecha = ie1.fechaInicio
+            ) latest
+            JOIN institucionestado ie ON ie.idInstitucion = latest.idInstitucion AND ie.idEstadoInstitucion = latest.idEstadoInstitucion
+            LEFT JOIN estadoinstitucion ei ON ei.idEstadoInstitucion = latest.idEstadoInstitucion
+            {inst_province_join}
+            WHERE 1=1 {inst_province_filter}
+            GROUP BY estado
+            ORDER BY estado
+            """,
+            tuple(params_inst)
+        )
+        instituciones_estado = cur.fetchall() or []
+
+        # Tasa de actividad: accesos y usuarios activos
+        params_act = [from_dt, to_dt]
+        if province_id is not None:
+            params_act.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COUNT(*) totalAccesos, COUNT(DISTINCT ha.idUsuario) usuariosActivos
+            FROM historialacceso ha
+            LEFT JOIN usuario u ON u.idUsuario = ha.idUsuario
+            {province_join}
+            WHERE ha.fecha BETWEEN %s AND %s {province_filter_sql}
+            """,
+            tuple(params_act)
+        )
+        act_row = cur.fetchone() or {"totalAccesos":0,"usuariosActivos":0}
+        # Total usuarios (registrados en o antes de fecha fin)
+        params_tot_users = [to_dt]
+        if province_id is not None:
+            params_tot_users.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ue.idUsuario) total
+            FROM usuarioestado ue
+            JOIN usuario u ON u.idUsuario = ue.idUsuario
+            {province_join}
+            WHERE ue.fechaInicio <= %s {province_filter_sql}
+            """,
+            tuple(params_tot_users)
+        )
+        total_users_row = cur.fetchone() or {"total":0}
+        total_users = total_users_row.get('total') or 0
+        usuarios_activos = act_row.get('usuariosActivos') or 0
+        tasa_act = (usuarios_activos / total_users) if total_users else 0
+
+        empty_all = all(len(x)==0 for x in [usuarios_por_tipo, evolucion_registros, tests_completados, carreras_por_tipo, instituciones_estado])
+        if empty_all:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos con los filtros aplicados."}), 404
+
+        return jsonify({
+            "filters": {"from": str(from_dt), "to": str(to_dt), "provinceId": province_id},
+            "usuariosPorTipo": usuarios_por_tipo,
+            "evolucionRegistros": evolucion_registros,
+            "testsCompletados": tests_completados,
+            "carrerasPorTipo": carreras_por_tipo,
+            "institucionesEstado": instituciones_estado,
+            "actividad": {
+                "totalAccesos": act_row.get('totalAccesos'),
+                "usuariosActivos": usuarios_activos,
+                "totalUsuarios": total_users,
+                "tasaActividad": round(tasa_act,4)
+            }
+        }), 200
+    except Exception as e:
+        log(f"US023 system stats error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/stats/system/export', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_stats_system_export(current_user_id):
+    filters, err_resp, err_code = _parse_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    # Reutilizar endpoint principal
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = admin_stats_system(current_user_id)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Sección","Clave","Valor"])
+        for row in payload.get('usuariosPorTipo', []):
+            w.writerow(["UsuariosPorTipo", row['tipo'], row['total']])
+        for row in payload.get('evolucionRegistros', []):
+            w.writerow(["EvolucionRegistros", row['periodo'], row['total']])
+        for row in payload.get('carrerasPorTipo', []):
+            w.writerow(["CarrerasPorTipo", row['tipo'], row['total']])
+        for row in payload.get('institucionesEstado', []):
+            w.writerow(["InstitucionesEstado", row['estado'], row['total']])
+        w.writerow(["Actividad","totalAccesos", payload['actividad']['totalAccesos']])
+        w.writerow(["Actividad","usuariosActivos", payload['actividad']['usuariosActivos']])
+        w.writerow(["Actividad","totalUsuarios", payload['actividad']['totalUsuarios']])
+        w.writerow(["Actividad","tasaActividad", payload['actividad']['tasaActividad']])
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_system.csv"'})
+    else:  # pdf stub
+        # Simple texto como stub (no genera PDF real)
+        content = "Reporte Sistema (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_system.pdf"'})
+
+@app.route('/api/v1/admin/stats/users', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_stats_users(current_user_id):
+    filters, err_resp, err_code = _parse_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    from_dt, to_dt, province_id = filters
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Favoritos (intereses)
+        fav_params = [from_dt, to_dt]
+        fav_province_join = " LEFT JOIN usuario u ON u.idUsuario=iuc.idUsuario LEFT JOIN localidad l ON l.idLocalidad=u.idLocalidad LEFT JOIN provincia pr ON pr.idProvincia=l.idProvincia "
+        fav_province_filter = ''
+        if province_id is not None:
+            fav_province_filter = ' AND pr.idProvincia = %s'
+            fav_params.append(province_id)
+        cur.execute(
+            f"""
+            SELECT ci.idCarreraInstitucion AS idCI, COALESCE(c.nombreCarrera,'(Sin nombre)') AS carrera, COUNT(*) total
+            FROM interesusuariocarrera iuc
+            JOIN carrerainstitucion ci ON ci.idCarreraInstitucion = iuc.idCarreraInstitucion
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            {fav_province_join}
+            WHERE iuc.fechaAlta BETWEEN %s AND %s {fav_province_filter}
+            GROUP BY ci.idCarreraInstitucion, carrera
+            ORDER BY total DESC
+            LIMIT 10
+            """,
+            tuple(fav_params)
+        )
+        carreras_favoritas = cur.fetchall() or []
+
+        # Top carreras compatibilidad (no hay datos suficientes -> vacío)
+        top_compat = []
+
+        if len(carreras_favoritas)==0 and len(top_compat)==0:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos con los filtros aplicados."}), 404
+
+        return jsonify({
+            "filters": {"from": str(from_dt), "to": str(to_dt), "provinceId": province_id},
+            "carrerasFavoritas": carreras_favoritas,
+            "topCarrerasCompatibilidad": top_compat
+        }), 200
+    except Exception as e:
+        log(f"US023 user stats error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/stats/users/export', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_stats_users_export(current_user_id):
+    filters, err_resp, err_code = _parse_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = admin_stats_users(current_user_id)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Sección","Clave","Valor"])
+        for row in payload.get('carrerasFavoritas', []):
+            w.writerow(["CarrerasFavoritas", row['carrera'], row['total']])
+        # top compat vacío actualmente
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_users.csv"'})
+    else:
+        content = "Reporte Usuarios (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_users.pdf"'})
+
+    
+# ============================ Tablero de Estadísticas Institución (US024) ============================
+# Filtros generales: from=YYYY-MM-DD, to=YYYY-MM-DD (requeridos en endpoints de búsqueda)
+# Filtro opcional para generales: tiposCarrera=lista separada por comas de idTipoCarrera (o 'all')
+# Validaciones: to <= hoy, from <= to. Caso inválido -> ERR1
+# Si no hay datos -> ERR1 (404) con mensaje de cambiar filtros
+# Contexto: estadísticas solo de carreras pertenecientes a la institución del usuario autenticado
+# Limitaciones por modelo actual:
+# - No existe tabla con compatibilidades históricas por test/carrera -> métricas de compatibilidad serán listas vacías o placeholders
+# - No existe tracking de "favoritos" salvo tabla interesusuariocarrera sin idCarreraInstitucion explícita en esquema actual -> sólo se puede contar si se incorpora idCarreraInstitucion (no está). Se devuelve 0.
+# - Ranking de carreras según máxima compatibilidad y promedios: devolver listas vacías.
+# - Para ranking de favoritas se usa 0 por ausencia de FK necesaria.
+# Export PDF es stub textual (igual que US023).
+
+def _parse_inst_stats_filters(require_types=False):
+    args = request.args
+    f = args.get('from')
+    t = args.get('to')
+    tipos_raw = args.get('tiposCarrera')
+    if not f or not t:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+    try:
+        from_dt = datetime.datetime.strptime(f, '%Y-%m-%d').date()
+        to_dt = datetime.datetime.strptime(t, '%Y-%m-%d').date()
+        if to_dt > datetime.date.today() or from_dt > to_dt:
+            raise ValueError()
+        tipos = None
+        if tipos_raw and tipos_raw.lower() not in ('all','todas','todos'):
+            tipos = []
+            for part in tipos_raw.split(','):
+                part = part.strip()
+                if part:
+                    tipos.append(int(part))
+            if not tipos: # lista vacía tras parseo
+                tipos = None
+        return (from_dt, to_dt, tipos), None, None
+    except Exception:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+
+@app.route('/api/v1/institucion/stats/general', methods=['GET'])
+@token_required
+def institucion_stats_general(current_user_id):
+    filters, err_resp, err_code = _parse_inst_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    from_dt, to_dt, tipos = filters
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst:
+            return jsonify({"errorCode":"ERR1","message":"Institución no encontrada."}), 404
+        cur = conn.cursor(dictionary=True)
+
+        params = [id_inst, from_dt, to_dt]
+        tipo_filter_sql = ''
+        if tipos:
+            # filtrar por tipo de carrera (tabla carrera->tipocarrera)
+            in_clause = ','.join(['%s']*len(tipos))
+            tipo_filter_sql = f" AND tc.idTipoCarrera IN ({in_clause})"
+            params.extend(tipos)
+        # Carreras cargadas en periodo
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ci.idCarreraInstitucion) total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            WHERE ci.idInstitucion=%s AND ci.fechaInicio BETWEEN %s AND %s {tipo_filter_sql}
+            """,
+            tuple(params)
+        )
+        row_total = cur.fetchone() or {"total":0}
+        total_carreras = row_total['total'] or 0
+
+        # Carreras dadas de baja (fechaFin dentro del rango)
+        params_baja = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_baja.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ci.idCarreraInstitucion) total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            WHERE ci.idInstitucion=%s AND ci.fechaFin IS NOT NULL AND ci.fechaFin BETWEEN %s AND %s {tipo_filter_sql}
+            """,
+            tuple(params_baja)
+        )
+        row_baja = cur.fetchone() or {"total":0}
+        total_bajas = row_baja['total'] or 0
+
+        # Ranking favoritas (placeholder vacio, falta FK a interesusuariocarrera)
+        ranking_favoritas = []
+        # Ranking por máxima compatibilidad (no disponible)
+        ranking_max_compatibilidad = []
+        # Promedio de compatibilidades por tipo carrera (no disponible)
+        promedio_por_tipo = []
+
+        empty_all = (total_carreras==0 and total_bajas==0 and len(ranking_favoritas)==0 and len(ranking_max_compatibilidad)==0 and len(promedio_por_tipo)==0)
+        if empty_all:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos con los filtros aplicados."}), 404
+
+        return jsonify({
+            "filters": {"from":str(from_dt),"to":str(to_dt),"tiposCarrera": tipos},
+            "totalCarreras": total_carreras,
+            "totalBajas": total_bajas,
+            "rankingFavoritas": ranking_favoritas,
+            "rankingMaxCompatibilidad": ranking_max_compatibilidad,
+            "promedioCompatibilidadPorTipo": promedio_por_tipo
+        }), 200
+    except Exception as e:
+        log(f"US024 general stats error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/institucion/stats/general/export', methods=['GET'])
+@token_required
+def institucion_stats_general_export(current_user_id):
+    filters, err_resp, err_code = _parse_inst_stats_filters()
+    if err_resp:
+        return err_resp, err_code
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = institucion_stats_general(current_user_id)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Clave","Valor"])
+        w.writerow(["totalCarreras", payload['totalCarreras']])
+        w.writerow(["totalBajas", payload['totalBajas']])
+        for r in payload.get('rankingFavoritas', []):
+            w.writerow(["rankingFavoritas", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('rankingMaxCompatibilidad', []):
+            w.writerow(["rankingMaxCompatibilidad", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('promedioCompatibilidadPorTipo', []):
+            w.writerow(["promedioCompatibilidadPorTipo", json.dumps(r, ensure_ascii=False)])
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_institucion_general.csv"'})
+    else:
+        content = "Reporte Institución General (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_institucion_general.pdf"'})
+
+# Estadísticas por carrera
+def _parse_inst_carrera_filters():
+    args = request.args
+    f = args.get('from')
+    t = args.get('to')
+    if not f or not t:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+    try:
+        from_dt = datetime.datetime.strptime(f, '%Y-%m-%d').date()
+        to_dt = datetime.datetime.strptime(t, '%Y-%m-%d').date()
+        if to_dt > datetime.date.today() or from_dt > to_dt:
+            raise ValueError()
+        return (from_dt, to_dt), None, None
+    except Exception:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos."}), 400
+
+@app.route('/api/v1/institucion/stats/carreras', methods=['GET'])
+@token_required
+def institucion_stats_carreras_list(current_user_id):
+    # Lista de carreras de la institución (sin filtros de fecha)
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst:
+            return jsonify({"errorCode":"ERR1","message":"Institución no encontrada."}), 404
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idCarreraInstitucion, nombreCarrera FROM carrerainstitucion WHERE idInstitucion=%s AND (fechaFin IS NULL OR fechaFin > NOW()) ORDER BY nombreCarrera", (id_inst,))
+        rows = cur.fetchall() or []
+        if not rows:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos."}), 404
+        return jsonify({"carreras": rows}), 200
+    except Exception as e:
+        log(f"US024 list carreras error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener carreras"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/institucion/stats/carrera/<int:idCarreraInstitucion>', methods=['GET'])
+@token_required
+def institucion_stats_carrera_detalle(current_user_id, idCarreraInstitucion):
+    filters, err_resp, err_code = _parse_inst_carrera_filters()
+    if err_resp:
+        return err_resp, err_code
+    from_dt, to_dt = filters
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst:
+            return jsonify({"errorCode":"ERR1","message":"Institución no encontrada."}), 404
+        if not _ci_belongs(conn, idCarreraInstitucion, id_inst):
+            return jsonify({"errorCode":"ERR1","message":"Carrera no pertenece a la institución."}), 404
+        cur = conn.cursor(dictionary=True)
+
+        # Placeholders por falta de datos reales
+        historial_compatibilidades = []  # [{fecha:'YYYY-MM', compatibilidad:0}]
+        ranking_popularidad_provincia = []  # [{provincia:'Nombre', participacion:0}]
+        maxima_calificacion = None
+        ultima_vez_top = None
+        veces_mas_compatible = 0
+        favoritos_total = 0
+        evolucion_favoritos = []  # [{periodo:'YYYY-MM', total:0}]
+
+        empty_all = (len(historial_compatibilidades)==0 and len(ranking_popularidad_provincia)==0 and maxima_calificacion in (None,0) and ultima_vez_top is None and veces_mas_compatible==0 and favoritos_total==0 and len(evolucion_favoritos)==0)
+        if empty_all:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos con los filtros aplicados."}), 404
+
+        return jsonify({
+            "filters": {"from":str(from_dt),"to":str(to_dt)},
+            "historialCompatibilidades": historial_compatibilidades,
+            "rankingPopularidadProvincia": ranking_popularidad_provincia,
+            "maximaCalificacion": maxima_calificacion,
+            "ultimaVezTop": ultima_vez_top,
+            "vecesMasCompatible": veces_mas_compatible,
+            "favoritosTotal": favoritos_total,
+            "evolucionFavoritos": evolucion_favoritos
+        }), 200
+    except Exception as e:
+        log(f"US024 detalle carrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/institucion/stats/carrera/<int:idCarreraInstitucion>/export', methods=['GET'])
+@token_required
+def institucion_stats_carrera_detalle_export(current_user_id, idCarreraInstitucion):
+    filters, err_resp, err_code = _parse_inst_carrera_filters()
+    if err_resp:
+        return err_resp, err_code
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = institucion_stats_carrera_detalle(current_user_id, idCarreraInstitucion)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Clave","Valor"])
+        for r in payload.get('historialCompatibilidades', []):
+            w.writerow(["historialCompatibilidades", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('rankingPopularidadProvincia', []):
+            w.writerow(["rankingPopularidadProvincia", json.dumps(r, ensure_ascii=False)])
+        w.writerow(["maximaCalificacion", payload.get('maximaCalificacion')])
+        w.writerow(["ultimaVezTop", payload.get('ultimaVezTop')])
+        w.writerow(["vecesMasCompatible", payload.get('vecesMasCompatible')])
+        w.writerow(["favoritosTotal", payload.get('favoritosTotal')])
+        for r in payload.get('evolucionFavoritos', []):
+            w.writerow(["evolucionFavoritos", json.dumps(r, ensure_ascii=False)])
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_institucion_carrera.csv"'})
+    else:
+        content = "Reporte Institución Carrera (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_institucion_carrera.pdf"'})
+
+
+# ============================ Tablero de Estadísticas Estudiante (US025) ============================
+# Secciones: Perfil Personal, Estadísticas de Compatibilidad
+# Limitaciones del modelo actual:
+# - Tablas test/testaptitud/testcarrerainstitucion carecen de timestamps necesarios y FK completas (no están todas las columnas). No hay registros de aptitudes con valores ni relación directa aptitud->puntaje.
+# - No existe tabla de favoritos que relacione usuario con carreraInstitucion (interesusuariocarrera no tiene idCarreraInstitucion en dump actual).
+# Por ello se devuelven placeholders vacíos o 0 donde no se puede calcular realmente.
+# Futuro: agregar columnas: test(fechaFinalizacion), testaptitud(idAptitud, valor), testcarrerainstitucion(idCarreraInstitucion, compatibilidad), interesusuariocarrera(idCarreraInstitucion, idUsuario).
+
+@app.route('/api/v1/estudiante/stats/perfil', methods=['GET'])
+@token_required
+def estudiante_stats_perfil(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Nombre y apellido
+        cur.execute("SELECT nombre, apellido FROM usuario WHERE idUsuario=%s", (current_user_id,))
+        urow = cur.fetchone() or {}
+        nombre = urow.get('nombre') or ''
+        apellido = urow.get('apellido') or ''
+        # Cantidad de tests (placeholder: contar filas en test vinculadas al usuario si existiera la columna idUsuario)
+        try:
+            cur.execute("SELECT COUNT(*) total FROM test WHERE idUsuario=%s", (current_user_id,))
+            tests_total = (cur.fetchone() or {}).get('total') or 0
+        except Exception:
+            tests_total = 0
+        # Top 3 aptitudes (sin datos -> lista vacía)
+        top3_aptitudes = []
+        # Radar aptitudes (lista de objetos {aptitud, valor})
+        radar_aptitudes = []
+        # Evolución aptitudes principales (lista {periodo, aptitud, valor})
+        evolucion_aptitudes = []
+
+        empty_all = (tests_total==0 and len(top3_aptitudes)==0 and len(radar_aptitudes)==0 and len(evolucion_aptitudes)==0 and (not nombre and not apellido))
+        if empty_all:
+            # Igual devolvemos 404 con ERR1 siguiendo patrón de otros tableros sin datos
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos para el perfil."}), 404
+
+        return jsonify({
+            "usuario": {"nombre": nombre, "apellido": apellido},
+            "testsRealizados": tests_total,
+            "top3Aptitudes": top3_aptitudes,
+            "radarAptitudes": radar_aptitudes,
+            "evolucionAptitudes": evolucion_aptitudes
+        }), 200
+    except Exception as e:
+        log(f"US025 perfil estudiante error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/estudiante/stats/perfil/export', methods=['GET'])
+@token_required
+def estudiante_stats_perfil_export(current_user_id):
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = estudiante_stats_perfil(current_user_id)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Clave","Valor"])
+        w.writerow(["nombre", payload['usuario']['nombre']])
+        w.writerow(["apellido", payload['usuario']['apellido']])
+        w.writerow(["testsRealizados", payload['testsRealizados']])
+        for r in payload.get('top3Aptitudes', []):
+            w.writerow(["top3Aptitudes", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('radarAptitudes', []):
+            w.writerow(["radarAptitudes", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('evolucionAptitudes', []):
+            w.writerow(["evolucionAptitudes", json.dumps(r, ensure_ascii=False)])
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_estudiante_perfil.csv"'})
+    else:
+        content = "Reporte Perfil Estudiante (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_estudiante_perfil.pdf"'})
+
+@app.route('/api/v1/estudiante/stats/compatibilidad', methods=['GET'])
+@token_required
+def estudiante_stats_compatibilidad(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Top 5 carreras más compatibles (sin datos -> vacio)
+        top5_carreras = []
+        # Favoritas (con compatibilidad) -> vacio
+        favoritas = []
+        # Compatibilidad promedio entre favoritas -> 0
+        compat_promedio_favoritas = 0
+        # Tipos de carrera con mayor compatibilidad -> vacio
+        tipos_mayor_compat = []
+        empty_all = (len(top5_carreras)==0 and len(favoritas)==0 and compat_promedio_favoritas==0 and len(tipos_mayor_compat)==0)
+        if empty_all:
+            return jsonify({"errorCode":"ERR1","message":"No se encontraron datos de compatibilidad."}), 404
+        return jsonify({
+            "top5Carreras": top5_carreras,
+            "favoritas": favoritas,
+            "compatibilidadPromedioFavoritas": compat_promedio_favoritas,
+            "tiposCarreraMayorCompatibilidad": tipos_mayor_compat
+        }), 200
+    except Exception as e:
+        log(f"US025 compatibilidad estudiante error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al obtener estadísticas"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/estudiante/stats/compatibilidad/export', methods=['GET'])
+@token_required
+def estudiante_stats_compatibilidad_export(current_user_id):
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt not in ('csv','pdf'):
+        return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
+    with app.test_request_context(query_string=request.query_string):
+        data_resp, status = estudiante_stats_compatibilidad(current_user_id)
+    if status != 200:
+        return data_resp, status
+    payload = data_resp.get_json()
+    if fmt == 'csv':
+        import io, csv as _csv
+        buf = io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["Clave","Valor"])
+        for r in payload.get('top5Carreras', []):
+            w.writerow(["top5Carreras", json.dumps(r, ensure_ascii=False)])
+        for r in payload.get('favoritas', []):
+            w.writerow(["favoritas", json.dumps(r, ensure_ascii=False)])
+        w.writerow(["compatibilidadPromedioFavoritas", payload.get('compatibilidadPromedioFavoritas')])
+        for r in payload.get('tiposCarreraMayorCompatibilidad', []):
+            w.writerow(["tiposCarreraMayorCompatibilidad", json.dumps(r, ensure_ascii=False)])
+        csv_data = buf.getvalue()
+        from flask import Response
+        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_estudiante_compatibilidad.csv"'})
+    else:
+        content = "Reporte Compatibilidad Estudiante (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        from flask import Response
+        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_estudiante_compatibilidad.pdf"'})
+
+    
+# ============================ Configuración de Backups Automáticos (US026) ============================
+# Requisitos:
+# - Un solo registro de configuración (tabla configuracionbackup) o se reemplaza (truncate + insert) para simplificar.
+# - Campos: frecuencia (diaria|semanal|mensual), horaEjecucion (HH:MM), cantidadBackupConservar (int>0)
+# - GET: devuelve configuración actual (si no existe, valores null)
+# - PUT: guarda configuración. Validaciones -> ERR1 campos obligatorios / formato inválido; ERR2 error técnico.
+# Permiso requerido: ADMIN_PANEL.
+
+VALID_FREQUENCIAS_BACKUP = { 'diaria','semanal','mensual' }
+
+def _read_backup_config(cur):
+    cur.execute("SELECT frecuencia, TIME_FORMAT(horaEjecucion,'%H:%i') AS horaEjecucion, cantidadBackupConservar FROM configuracionbackup LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        return {"frecuencia": None, "horaEjecucion": None, "cantidadBackupConservar": None}
+    return {"frecuencia": row[0], "horaEjecucion": row[1], "cantidadBackupConservar": row[2]}
+
+@app.route('/api/v1/admin/backup/config', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def backup_config_get(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        data = _read_backup_config(cur)
+        return jsonify(data), 200
+    except Exception as e:
+        log(f"US026 get config error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR2","message":"Error al obtener la configuración."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/backup/config', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def backup_config_save(current_user_id):
+    payload = request.get_json(silent=True) or {}
+    freq = (payload.get('frecuencia') or '').strip().lower()
+    hora = (payload.get('horaEjecucion') or '').strip()
+    cant = payload.get('cantidadBackupConservar')
+    # Validaciones básicas
+    try:
+        if freq not in VALID_FREQUENCIAS_BACKUP:
+            raise ValueError('freq')
+        # Validar hora HH:MM
+        datetime.datetime.strptime(hora, '%H:%M')
+        cant_int = int(cant)
+        if cant_int <= 0:
+            raise ValueError('cant')
+    except Exception:
+        return jsonify({"errorCode":"ERR1","message":"Debe completar todos los campos para guardar la configuración."}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Limpiar configuración previa (simplificación, tabla almacena único registro)
+        cur.execute("DELETE FROM configuracionbackup")
+        cur.execute("INSERT INTO configuracionbackup (frecuencia, horaEjecucion, cantidadBackupConservar) VALUES (%s,%s,%s)", (freq, hora+':00', cant_int))
+        conn.commit()
+        return jsonify({"ok": True, "message":"Configuración guardada."}), 200
+    except Exception as e:
+        log(f"US026 save config error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR2","message":"Error al guardar la configuración. Intente nuevamente."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+
+# ============================ Recuperación de Backups (US027) ============================
+# Requisitos:
+# - Listar backups disponibles (tabla backup) con fechaBackup, tamano, directorio.
+# - Restaurar un backup por fecha (identificador) simulando proceso.
+# - Confirmación y progreso: este backend sólo simula (progreso 0->100 en memoria, no persistente entre procesos).
+# - Errores:
+#   ERR1: Error técnico durante restauración.
+#   ERR2: Backup no encontrado o datos inválidos.
+# Endpoints:
+#   GET  /api/v1/admin/backup/list
+#   POST /api/v1/admin/backup/restore  { "fechaBackup": "YYYY-MM-DD HH:MM:SS" }
+#   GET  /api/v1/admin/backup/restore/status?fecha=...
+# Notas: En producción la restauración sería asincrónica y bloquearía escritura; aquí se simula en memoria.
+
+_RESTORE_JOBS = {}  # clave fechaBackup(str) -> {status: pending|running|success|error, progress:int, message}
+
+def _serialize_backup(row):
+    # row: (fechaBackup, directorio, tamano)
+    return {
+        "fechaBackup": row[0].strftime('%Y-%m-%d %H:%M:%S') if row[0] else None,
+        "directorio": row[1],
+        "tamano": row[2]
+    }
+
+@app.route('/api/v1/admin/backup/list', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def backup_list(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT fechaBackup, directorio, tamano FROM backup ORDER BY fechaBackup DESC")
+        rows = cur.fetchall() or []
+        backups = [_serialize_backup(r) for r in rows]
+        return jsonify({"backups": backups}), 200
+    except Exception as e:
+        log(f"US027 list backups error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al listar backups."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+def _start_restore_job(fecha_str):
+    job = _RESTORE_JOBS.get(fecha_str)
+    if job and job['status'] in ('running','pending'):
+        return job
+    # Inicializar
+    job = {"status":"running","progress":0,"message":"Iniciando restauración"}
+    _RESTORE_JOBS[fecha_str] = job
+    # Simulación rápida de progreso (sin threading real para simplicidad: se incrementa cada consulta de status)
+    return job
+
+@app.route('/api/v1/admin/backup/restore', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def backup_restore_start(current_user_id):
+    data = request.get_json(silent=True) or {}
+    fecha = data.get('fechaBackup')
+    if not fecha:
+        return jsonify({"errorCode":"ERR2","message":"El archivo de respaldo seleccionado no es válido o está dañado."}), 400
+    # Verificar existencia en tabla
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT fechaBackup FROM backup WHERE fechaBackup=%s", (fecha,))
+        r = cur.fetchone()
+        if not r:
+            return jsonify({"errorCode":"ERR2","message":"El archivo de respaldo seleccionado no es válido o está dañado."}), 404
+        job = _start_restore_job(fecha)
+        return jsonify({"ok": True, "status": job['status'], "progress": job['progress'] }), 202
+    except Exception as e:
+        log(f"US027 start restore error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al restaurar el sistema. Intente nuevamente o contacte a soporte."}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/backup/restore/status', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def backup_restore_status(current_user_id):
+    fecha = request.args.get('fecha')
+    if not fecha or fecha not in _RESTORE_JOBS:
+        return jsonify({"errorCode":"ERR2","message":"El archivo de respaldo seleccionado no es válido o está dañado."}), 404
+    job = _RESTORE_JOBS[fecha]
+    # Simular avance
+    if job['status'] == 'running':
+        job['progress'] = min(100, job['progress'] + 25)
+        if job['progress'] >= 100:
+            job['status'] = 'success'
+            job['message'] = 'Restauración completada.'
+    return jsonify({"status": job['status'], "progress": job['progress'], "message": job.get('message') }), 200
+
+
+
+# ============================ Gestión Solicitudes de Instituciones (US028) ============================
+# Limitaciones del esquema actual: la tabla `institucion` no posee columnas para nombre, email, tipo, localización ni estado.
+# Tablas de estado (estadoinstitucion / institucionestado) no están correctamente relacionadas en el dump mínimo provisto.
+# Se implementa una capa simulada utilizando estructuras en memoria para estado y metadatos mientras no se normalice el modelo.
+# Una vez que existan columnas reales (ej: institucion.nombre, institucion.email, institucion.idTipoInstitucion, institucion.idLocalidad,
+# institucionestado(idInstitucion, idEstadoInstitucion, fechaInicio)) se deberá reescribir la lógica para usar SQL.
+# Estados simulados: PENDIENTE, APROBADA, RECHAZADA.
+# Filtros: nombre (substring), tipoId (int), estado (cadena), from/to (fecha solicitud en memoria). ERR1 filtros inválidos.
+# Acciones: aprobar (ERR2 si falla), rechazar (ERR3 si falla). Justificación opcional en rechazo.
+
+_INSTITUTION_REQUESTS_MEM = {
+    # idInstitucion: { 'nombre': str, 'email': str, 'tipoId': int, 'localizacion': '---', 'estado': 'PENDIENTE', 'fechaSolicitud': datetime.date }
+}
+
+def _bootstrap_institution_requests(conn):
+    if _INSTITUTION_REQUESTS_MEM:
+        return
+    try:
+        cur = conn.cursor()
+        # Intentar leer IDs existentes (sin más columnas disponibles)
+        cur.execute("SELECT idInstitucion FROM institucion ORDER BY idInstitucion LIMIT 20")
+        rows = cur.fetchall() or []
+        today = datetime.date.today()
+        for (iid,) in rows:
+            _INSTITUTION_REQUESTS_MEM[iid] = {
+                'nombre': f'Institucion {iid}',
+                'email': f'institucion{iid}@example.com',
+                'tipoId': 1,
+                'localizacion': 'N/D',
+                'estado': 'PENDIENTE',
+                'fechaSolicitud': today
+            }
+    except Exception as e:
+        log(f"US028 bootstrap error: {e}")
+
+def _parse_request_filters():
+    args = request.args
+    nombre = args.get('nombre')
+    tipo_id = args.get('tipoId')
+    estado = args.get('estado')
+    f = args.get('from')
+    t = args.get('to')
+    try:
+        tipo_id_int = int(tipo_id) if tipo_id not in (None,'') else None
+    except Exception:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos. Verifique los datos ingresados."}), 400
+    try:
+        from_dt = datetime.datetime.strptime(f,'%Y-%m-%d').date() if f else None
+        to_dt = datetime.datetime.strptime(t,'%Y-%m-%d').date() if t else None
+        if from_dt and to_dt and from_dt>to_dt:
+            raise ValueError()
+    except Exception:
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos. Verifique los datos ingresados."}), 400
+    if estado and estado.upper() not in ('PENDIENTE','APROBADA','RECHAZADA'):
+        return None, jsonify({"errorCode":"ERR1","message":"Filtros inválidos. Verifique los datos ingresados."}), 400
+    return (nombre, tipo_id_int, estado.upper() if estado else None, from_dt, to_dt), None, None
+
+@app.route('/api/v1/admin/institutions/requests', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_requests_list(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        _bootstrap_institution_requests(conn)
+        filters, err_resp, err_code = _parse_request_filters()
+        if err_resp:
+            return err_resp, err_code
+        nombre, tipo_id, estado, from_dt, to_dt = filters
+        data = []
+        for iid, meta in _INSTITUTION_REQUESTS_MEM.items():
+            if meta['estado'] == 'APROBADA':
+                continue  # ya no listar aprobadas (criterio de historia)
+            if nombre and nombre.lower() not in meta['nombre'].lower():
+                continue
+            if tipo_id and meta['tipoId'] != tipo_id:
+                continue
+            if estado and meta['estado'] != estado:
+                continue
+            if from_dt and meta['fechaSolicitud'] < from_dt:
+                continue
+            if to_dt and meta['fechaSolicitud'] > to_dt:
+                continue
+            data.append({
+                'idInstitucion': iid,
+                'nombre': meta['nombre'],
+                'tipoId': meta['tipoId'],
+                'localizacion': meta['localizacion'],
+                'estado': meta['estado'],
+                'email': meta['email'],
+                'fechaSolicitud': str(meta['fechaSolicitud'])
+            })
+        return jsonify({'solicitudes': data}), 200
+    except Exception as e:
+        log(f"US028 list error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Filtros inválidos. Verifique los datos ingresados.'}), 400
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/approve', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_request_approve(current_user_id, id_institucion):
+    try:
+        meta = _INSTITUTION_REQUESTS_MEM.get(id_institucion)
+        if not meta or meta['estado'] != 'PENDIENTE':
+            return jsonify({'errorCode':'ERR2','message':'No se pudo aprobar la solicitud. Intente nuevamente.'}), 404
+        # Simular actualización
+        meta['estado'] = 'APROBADA'
+        # Aquí se enviaría correo con credenciales
+        return jsonify({'ok': True, 'message':'Institución aprobada.'}), 200
+    except Exception as e:
+        log(f"US028 approve error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo aprobar la solicitud. Intente nuevamente.'}), 500
+
+@app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/reject', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_request_reject(current_user_id, id_institucion):
+    try:
+        meta = _INSTITUTION_REQUESTS_MEM.get(id_institucion)
+        if not meta or meta['estado'] != 'PENDIENTE':
+            return jsonify({'errorCode':'ERR3','message':'No se pudo rechazar la solicitud. Intente nuevamente.'}), 404
+        data = request.get_json(silent=True) or {}
+        just = data.get('justificacion')
+        meta['estado'] = 'RECHAZADA'
+        meta['justificacion'] = just
+        return jsonify({'ok': True, 'message':'Institución rechazada.'}), 200
+    except Exception as e:
+        log(f"US028 reject error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo rechazar la solicitud. Intente nuevamente.'}), 500
+
+
+    
+# ============================ ABM Carrera Catálogo (US029) ============================
+# Catálogo base: tabla carrera (idCarrera, nombreCarrera, idTipoCarrera, fechaFin)
+# Endpoints (prefijo admin):
+#  GET  /api/v1/admin/catalog/careers                -> listado (incluye bajas si ?includeInactive=1)
+#  POST /api/v1/admin/catalog/careers                -> alta (campos: nombreCarrera, idTipoCarrera)  ERR1 campos obligatorios
+#  GET  /api/v1/admin/catalog/careers/<id>           -> detalle
+#  PUT  /api/v1/admin/catalog/careers/<id>           -> modificar (mismos campos) ERR1 campos obligatorios
+#  DELETE /api/v1/admin/catalog/careers/<id>         -> baja lógica (set fechaFin=NOW()) ERR2 en error técnico
+# Errores:
+#  ERR1: campos obligatorios vacíos -> "Debe completar todos los campos obligatorios."
+#  ERR2: error técnico al dar de baja -> "No se pudo eliminar la carrera. Intente nuevamente."
+# Notas: No se permiten duplicados exactos (nombre + tipo) activos. Si existe uno con mismo nombre y tipo y sin fechaFin -> ERR1.
+
+def _career_exists_active(cur, nombre, tipo_id, exclude_id=None):
+    q = "SELECT idCarrera FROM carrera WHERE nombreCarrera=%s AND idTipoCarrera=%s AND fechaFin IS NULL"
+    params = [nombre, tipo_id]
+    if exclude_id:
+        q += " AND idCarrera<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/careers', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_catalog_careers_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera ORDER BY nombreCarrera")
+        else:
+            cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera WHERE fechaFin IS NULL ORDER BY nombreCarrera")
+        rows = cur.fetchall() or []
+        return jsonify({'careers': rows}), 200
+    except Exception as e:
+        log(f"US029 list careers error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo listar carreras.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/careers', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_catalog_career_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreCarrera') or '').strip()
+    tipo = data.get('idTipoCarrera')
+    if not nombre or not tipo:
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _career_exists_active(cur, nombre, tipo):
+            return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+        cur.execute("INSERT INTO carrera (nombreCarrera, idTipoCarrera) VALUES (%s,%s)", (nombre, tipo))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idCarrera': new_id}), 201
+    except Exception as e:
+        log(f"US029 create career error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_catalog_career_detail(current_user_id, id_carrera):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera WHERE idCarrera=%s", (id_carrera,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Carrera no encontrada.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US029 detail career error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_catalog_career_update(current_user_id, id_carrera):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreCarrera') or '').strip()
+    tipo = data.get('idTipoCarrera')
+    if not nombre or not tipo:
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idCarrera FROM carrera WHERE idCarrera=%s", (id_carrera,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Carrera no encontrada.'}), 404
+        if _career_exists_active(cur, nombre, tipo, exclude_id=id_carrera):
+            return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+        cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s WHERE idCarrera=%s", (nombre, tipo, id_carrera))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US029 update career error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_catalog_career_delete(current_user_id, id_carrera):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idCarrera FROM carrera WHERE idCarrera=%s", (id_carrera,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la carrera. Intente nuevamente.'}), 404
+        cur.execute("UPDATE carrera SET fechaFin=NOW() WHERE idCarrera=%s AND fechaFin IS NULL", (id_carrera,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US029 delete career error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la carrera. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+
+# ============================ ABM TipoCarrera (US030) ============================
+# Tabla involucrada: tipocarrera (idTipoCarrera, nombreTipoCarrera, fechaFin)
+# Endpoints (prefijo admin):
+#  GET    /api/v1/admin/catalog/career-types              -> listado (activas por defecto, ?includeInactive=1 para todas)
+#  POST   /api/v1/admin/catalog/career-types              -> alta (campo: nombreTipoCarrera) ERR1 si vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/career-types/<id>         -> detalle
+#  PUT    /api/v1/admin/catalog/career-types/<id>         -> modificar nombre ERR1 si vacío o duplicado activo
+#  DELETE /api/v1/admin/catalog/career-types/<id>         -> baja lógica (fechaFin=NOW()) ERR2 en error técnico
+# Errores definidos:
+#  ERR1: "Debe ingresar un nombre para el tipo de carrera." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar el tipo de carrera. Intente nuevamente." (error técnico o inexistente en baja)
+
+def _tipo_carrera_exists_active(cur, nombre, exclude_id=None):
+    q = "SELECT idTipoCarrera FROM tipocarrera WHERE nombreTipoCarrera=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idTipoCarrera<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/career-types', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_types_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera ORDER BY nombreTipoCarrera")
+        else:
+            cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera WHERE fechaFin IS NULL ORDER BY nombreTipoCarrera")
+        rows = cur.fetchall() or []
+        return jsonify({'careerTypes': rows}), 200
+    except Exception as e:
+        log(f"US030 list tipoCarrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo listar tipos de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-types', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_type_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoCarrera') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _tipo_carrera_exists_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
+        cur.execute("INSERT INTO tipocarrera (nombreTipoCarrera) VALUES (%s)", (nombre,))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idTipoCarrera': new_id}), 201
+    except Exception as e:
+        log(f"US030 create tipoCarrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_type_detail(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera WHERE idTipoCarrera=%s", (id_tipo,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Tipo de carrera no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US030 detail tipoCarrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener tipo de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_type_update(current_user_id, id_tipo):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoCarrera') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoCarrera FROM tipocarrera WHERE idTipoCarrera=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Tipo de carrera no encontrado.'}), 404
+        if _tipo_carrera_exists_active(cur, nombre, exclude_id=id_tipo):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
+        cur.execute("UPDATE tipocarrera SET nombreTipoCarrera=%s WHERE idTipoCarrera=%s", (nombre, id_tipo))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US030 update tipoCarrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_type_delete(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoCarrera FROM tipocarrera WHERE idTipoCarrera=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de carrera. Intente nuevamente.'}), 404
+        cur.execute("UPDATE tipocarrera SET fechaFin=NOW() WHERE idTipoCarrera=%s AND fechaFin IS NULL", (id_tipo,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US030 delete tipoCarrera error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de carrera. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
 
 
 
 
 if __name__ == "__main__":
-    # Inicializar la base de datos
-    # init_db()
-
-    # Iniciar la aplicación Flask
-    app.run(debug=True, host="127.0.0.1", port=8000)
+    app.run(debug=True, host="0.0.0.0", port=5000)
