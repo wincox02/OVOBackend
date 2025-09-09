@@ -27,9 +27,11 @@ CREATE TABLE IF NOT EXISTS `aptitud` (
   `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
   `fechaBaja` datetime DEFAULT NULL,
   PRIMARY KEY (`idAptitud`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.aptitud: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.aptitud: ~1 rows (aproximadamente)
+INSERT INTO `aptitud` (`idAptitud`, `nombreAptitud`, `descripcion`, `fechaAlta`, `fechaBaja`) VALUES
+	(1, 'Comunicación', 'Habilidad para transmitir ideas', '2025-09-09 14:36:35', '2025-09-09 14:37:08');
 
 -- Volcando estructura para tabla ovo.aptitudcarrera
 CREATE TABLE IF NOT EXISTS `aptitudcarrera` (
@@ -64,9 +66,11 @@ CREATE TABLE IF NOT EXISTS `carrera` (
   PRIMARY KEY (`idCarrera`),
   KEY `FK_carrera_tipocarrera` (`idTipoCarrera`),
   CONSTRAINT `FK_carrera_tipocarrera` FOREIGN KEY (`idTipoCarrera`) REFERENCES `tipocarrera` (`idTipoCarrera`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.carrera: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.carrera: ~1 rows (aproximadamente)
+INSERT INTO `carrera` (`idCarrera`, `fechaFin`, `nombreCarrera`, `idTipoCarrera`) VALUES
+	(1, '2025-09-09 14:19:45', 'Ing. X Modificada', 1);
 
 -- Volcando estructura para tabla ovo.carrerainstitucion
 CREATE TABLE IF NOT EXISTS `carrerainstitucion` (
@@ -131,13 +135,14 @@ CREATE TABLE IF NOT EXISTS `estadoacceso` (
   `nombreEstadoAcceso` varchar(50) DEFAULT NULL,
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idEstadoAcceso`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.estadoacceso: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.estadoacceso: ~4 rows (aproximadamente)
 INSERT INTO `estadoacceso` (`idEstadoAcceso`, `nombreEstadoAcceso`, `fechaFin`) VALUES
 	(1, 'Exitoso', NULL),
 	(2, 'Fallido', NULL),
-	(3, 'Fallido Google', NULL);
+	(3, 'Fallido Google', NULL),
+	(4, 'Bloqueado', NULL);
 
 -- Volcando estructura para tabla ovo.estadocarrerainstitucion
 CREATE TABLE IF NOT EXISTS `estadocarrerainstitucion` (
@@ -147,9 +152,9 @@ CREATE TABLE IF NOT EXISTS `estadocarrerainstitucion` (
   PRIMARY KEY (`idEstadoCarreraInstitucion`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.estadocarrerainstitucion: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.estadocarrerainstitucion: ~3 rows (aproximadamente)
 INSERT INTO `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`, `nombreEstadoCarreraInstitucion`, `fechaFin`) VALUES
-	(1, 'Activa', NULL),
+	(1, 'Activa', '2025-09-09 14:58:45'),
 	(2, 'Inactiva', NULL),
 	(3, 'Cerrada', NULL);
 
@@ -159,9 +164,11 @@ CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
   `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idEstadoInstitucion`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.estadoinstitucion: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.estadoinstitucion: ~1 rows (aproximadamente)
+INSERT INTO `estadoinstitucion` (`idEstadoInstitucion`, `nombreEstadoInstitucion`, `fechaFin`) VALUES
+	(1, 'Aprobada', '2025-09-09 14:57:02');
 
 -- Volcando estructura para tabla ovo.estadousuario
 CREATE TABLE IF NOT EXISTS `estadousuario` (
@@ -169,13 +176,14 @@ CREATE TABLE IF NOT EXISTS `estadousuario` (
   `nombreEstadoUsuario` varchar(50) DEFAULT NULL,
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idEstadoUsuario`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.estadousuario: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.estadousuario: ~4 rows (aproximadamente)
 INSERT INTO `estadousuario` (`idEstadoUsuario`, `nombreEstadoUsuario`, `fechaFin`) VALUES
-	(1, 'Activo', NULL),
+	(1, 'Activo', '2025-09-09 14:29:00'),
 	(2, 'Suspendido', NULL),
-	(3, 'Baja', NULL);
+	(3, 'Baja', NULL),
+	(4, 'Pendiente', NULL);
 
 -- Volcando estructura para tabla ovo.genero
 CREATE TABLE IF NOT EXISTS `genero` (
@@ -184,7 +192,7 @@ CREATE TABLE IF NOT EXISTS `genero` (
   PRIMARY KEY (`idGenero`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.genero: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.genero: ~1 rows (aproximadamente)
 INSERT INTO `genero` (`idGenero`, `nombreGenero`) VALUES
 	(1, 'Masculino');
 
@@ -195,14 +203,15 @@ CREATE TABLE IF NOT EXISTS `grupo` (
   `fechaFin` datetime DEFAULT NULL,
   `descripcion` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`idGrupo`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.grupo: ~3 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.grupo: ~5 rows (aproximadamente)
 INSERT INTO `grupo` (`idGrupo`, `nombreGrupo`, `fechaFin`, `descripcion`) VALUES
-	(1, 'Administrador', '2035-08-25 18:54:47', 'Todos los permisos'),
-	(2, 'Moderador', '3000-08-25 19:07:43', NULL),
+	(1, 'Administrador', NULL, 'Todos los permisos'),
+	(2, 'Moderador', NULL, NULL),
 	(3, 'Estudiante', NULL, NULL),
-	(4, 'Institucion', NULL, NULL);
+	(4, 'Institucion', NULL, NULL),
+	(5, 'Supervisores', NULL, 'Grupo de supervisión');
 
 -- Volcando estructura para tabla ovo.historialabm
 CREATE TABLE IF NOT EXISTS `historialabm` (
@@ -270,20 +279,24 @@ INSERT INTO `historialabm` (`idHistorialABM`, `idUsuario`, `fechaHistorial`, `id
 CREATE TABLE IF NOT EXISTS `historialacceso` (
   `idHistorial` int(11) NOT NULL AUTO_INCREMENT,
   `fecha` datetime NOT NULL DEFAULT current_timestamp(),
-  `ipAcceso` varchar(50) DEFAULT NULL,
-  `navegador` varchar(50) DEFAULT NULL,
-  `idEstadoAcceso` int(11) DEFAULT NULL,
-  `idUsuario` int(11) DEFAULT NULL,
+  `ipAcceso` varchar(50) NOT NULL,
+  `navegador` varchar(1000) NOT NULL,
+  `idEstadoAcceso` int(11) NOT NULL,
+  `idUsuario` int(11) NOT NULL,
   PRIMARY KEY (`idHistorial`),
   KEY `FK_historialacceso_estadoacceso` (`idEstadoAcceso`),
   KEY `FK_historialacceso_usuario` (`idUsuario`),
   CONSTRAINT `FK_historialacceso_estadoacceso` FOREIGN KEY (`idEstadoAcceso`) REFERENCES `estadoacceso` (`idEstadoAcceso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_historialacceso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.historialacceso: ~1 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.historialacceso: ~5 rows (aproximadamente)
 INSERT INTO `historialacceso` (`idHistorial`, `fecha`, `ipAcceso`, `navegador`, `idEstadoAcceso`, `idUsuario`) VALUES
-	(1, '2025-08-31 18:18:39', '1.1.1.1', 'dasd', 1, 1);
+	(1, '2025-08-31 18:18:39', '1.1.1.1', 'dasd', 1, 1),
+	(2, '2025-09-09 16:51:43', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+	(3, '2025-09-09 16:51:47', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+	(4, '2025-09-09 16:51:48', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+	(5, '2025-09-09 16:52:38', '127.0.0.1', 'PostmanRuntime/7.45.0', 2, 1);
 
 -- Volcando estructura para tabla ovo.institucion
 CREATE TABLE IF NOT EXISTS `institucion` (
@@ -366,7 +379,6 @@ CREATE TABLE IF NOT EXISTS `modalidadcarrerainstitucion` (
 
 -- Volcando datos para la tabla ovo.modalidadcarrerainstitucion: ~2 rows (aproximadamente)
 INSERT INTO `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`, `nombreModalidad`) VALUES
-	(1, 'Presencial'),
 	(2, 'Virtual'),
 	(3, 'Hibrida');
 
@@ -377,7 +389,7 @@ CREATE TABLE IF NOT EXISTS `pais` (
   PRIMARY KEY (`idPais`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.pais: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.pais: ~1 rows (aproximadamente)
 INSERT INTO `pais` (`idPais`, `nombrePais`) VALUES
 	(1, 'Argentina');
 
@@ -386,31 +398,43 @@ CREATE TABLE IF NOT EXISTS `permiso` (
   `idPermiso` int(11) NOT NULL AUTO_INCREMENT,
   `nombrePermiso` varchar(50) DEFAULT NULL,
   `descripcion` varchar(500) DEFAULT NULL,
+  `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idPermiso`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.permiso: ~2 rows (aproximadamente)
-INSERT INTO `permiso` (`idPermiso`, `nombrePermiso`, `descripcion`) VALUES
-	(1, 'ADMIN_PANEL', 'Obtener Grupos y permisos. Asignar permisos a usuarios'),
-	(2, 'NO_SE', 'Por grupo moderador');
+-- Volcando datos para la tabla ovo.permiso: ~7 rows (aproximadamente)
+INSERT INTO `permiso` (`idPermiso`, `nombrePermiso`, `descripcion`, `fechaFin`) VALUES
+	(0, 'ADMIN_PANEL', 'TEMP', NULL),
+	(1, 'LIST_USERS', 'Listar todos los usuarios del sistema', NULL),
+	(2, 'LIST_GROUPS', 'Listar todos los grupos activos del sistema', NULL),
+	(3, 'USER_GROUPS', 'Ver/Asignar los grupos de un usuario', NULL),
+	(4, 'USER_PERMS', 'Ver/Asignar los permisos de un usuario', NULL),
+	(5, 'LIST_PERMS', 'Listar todos los permisos del sistema', NULL),
+	(6, 'USER_HISTORY', 'Ver el historial de acceso de un usuario', NULL);
 
 -- Volcando estructura para tabla ovo.permisogrupo
 CREATE TABLE IF NOT EXISTS `permisogrupo` (
   `idPermisoGrupo` int(11) NOT NULL AUTO_INCREMENT,
-  `idGrupo` int(11) DEFAULT NULL,
-  `idPermiso` int(11) DEFAULT NULL,
+  `idGrupo` int(11) NOT NULL,
+  `idPermiso` int(11) NOT NULL,
   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idPermisoGrupo`),
   KEY `FK_permisogrupo_grupo` (`idGrupo`),
   KEY `FK_permisogrupo_permiso` (`idPermiso`),
-  CONSTRAINT `FK_permisogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `FK_permisogrupo_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  CONSTRAINT `FK_permisogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `FK_permisogrupo_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.permisogrupo: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.permisogrupo: ~7 rows (aproximadamente)
 INSERT INTO `permisogrupo` (`idPermisoGrupo`, `idGrupo`, `idPermiso`, `fechaInicio`, `fechaFin`) VALUES
-	(1, 1, 1, '2025-08-25 18:55:15', NULL);
+	(0, 1, 0, '2025-09-09 15:48:14', NULL),
+	(1, 1, 1, '2025-08-25 18:55:15', NULL),
+	(2, 1, 2, '2025-09-09 15:48:14', NULL),
+	(3, 1, 3, '2025-09-09 16:07:13', NULL),
+	(4, 1, 4, '2025-09-09 16:14:35', NULL),
+	(5, 1, 5, '2025-09-09 16:57:54', NULL),
+	(6, 1, 6, '2025-09-09 16:58:05', NULL);
 
 -- Volcando estructura para tabla ovo.preguntafrecuente
 CREATE TABLE IF NOT EXISTS `preguntafrecuente` (
@@ -433,7 +457,7 @@ CREATE TABLE IF NOT EXISTS `provincia` (
   CONSTRAINT `FK_provincia_pais` FOREIGN KEY (`idPais`) REFERENCES `pais` (`idPais`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.provincia: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.provincia: ~1 rows (aproximadamente)
 INSERT INTO `provincia` (`idProvincia`, `nombreProvincia`, `idPais`) VALUES
 	(1, 'Mendoza', 1);
 
@@ -482,11 +506,12 @@ CREATE TABLE IF NOT EXISTS `tipoaccion` (
   `idTipoAccion` int(11) NOT NULL AUTO_INCREMENT,
   `nombreTipoAccion` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`idTipoAccion`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.tipoaccion: ~0 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.tipoaccion: ~2 rows (aproximadamente)
 INSERT INTO `tipoaccion` (`idTipoAccion`, `nombreTipoAccion`) VALUES
-	(1, 'CREACION');
+	(1, 'ACTUALIZACION'),
+	(2, 'MODIFICACION');
 
 -- Volcando estructura para tabla ovo.tipocarrera
 CREATE TABLE IF NOT EXISTS `tipocarrera` (
@@ -495,7 +520,7 @@ CREATE TABLE IF NOT EXISTS `tipocarrera` (
   PRIMARY KEY (`idTipoCarrera`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.tipocarrera: ~9 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.tipocarrera: ~10 rows (aproximadamente)
 INSERT INTO `tipocarrera` (`idTipoCarrera`, `nombreTipoCarrera`) VALUES
 	(1, 'Licenciatura'),
 	(2, 'Tecnicatura'),
@@ -514,13 +539,14 @@ CREATE TABLE IF NOT EXISTS `tipoinstitucion` (
   `nombreTipoInstitucion` varchar(50) DEFAULT NULL,
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idTipoInstitucion`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.tipoinstitucion: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.tipoinstitucion: ~4 rows (aproximadamente)
 INSERT INTO `tipoinstitucion` (`idTipoInstitucion`, `nombreTipoInstitucion`, `fechaFin`) VALUES
-	(1, 'Universitaria', NULL),
+	(1, 'Universitaria', '2025-09-09 14:34:50'),
 	(2, 'Instituto tecnico', NULL),
-	(3, 'Centro de formacion', NULL);
+	(3, 'Centro de formacion', NULL),
+	(4, 'Universidad Privada', NULL);
 
 -- Volcando estructura para tabla ovo.usuario
 CREATE TABLE IF NOT EXISTS `usuario` (
@@ -539,12 +565,14 @@ CREATE TABLE IF NOT EXISTS `usuario` (
   KEY `FK_usuario_localidad` (`idLocalidad`),
   CONSTRAINT `FK_usuario_genero` FOREIGN KEY (`idGenero`) REFERENCES `genero` (`idGenero`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_usuario_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.usuario: ~1 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.usuario: ~4 rows (aproximadamente)
 INSERT INTO `usuario` (`idUsuario`, `mail`, `dni`, `apellido`, `nombre`, `contrasena`, `vencimientoContrasena`, `fechaNac`, `idGenero`, `idLocalidad`) VALUES
 	(1, 'm1718c@gmail.com', 12345678, 'Bufarini', 'Ignacio', 'HnSZzlwAdcOCybWVlw7mGwLX5OwjARun2/LnHUpBn2I=', '2026-08-19 17:36:29', '2000-05-15', 1, 1),
-	(2, 'ana@example.com', NULL, NULL, 'Ana', '7s0ftvL9WCz6AT2uHOuszsh0nZy5C/fBFyZldg+rgNU=', NULL, NULL, NULL, NULL);
+	(2, 'ana@example.com', NULL, NULL, 'Ana', '7s0ftvL9WCz6AT2uHOuszsh0nZy5C/fBFyZldg+rgNU=', NULL, NULL, NULL, NULL),
+	(3, 'juan.perez@example.com', NULL, 'Perez', 'Juan', 'jJtOzc+o/tChlUVcxeh1SEVM3V7gZBq86mYaXNfceUg=', NULL, NULL, NULL, NULL),
+	(4, 'ana.lopez@example.com', NULL, 'Lopez', 'Ana', 'Yc/OAYpBYeQ/eoDXYNSeDpqJ0vodTuMFQl2xPLhyqW0=', NULL, NULL, NULL, NULL);
 
 -- Volcando estructura para tabla ovo.usuarioestado
 CREATE TABLE IF NOT EXISTS `usuarioestado` (
@@ -558,11 +586,16 @@ CREATE TABLE IF NOT EXISTS `usuarioestado` (
   KEY `FK_usuarioestado_usuario` (`idUsuario`),
   CONSTRAINT `FK_usuarioestado_estadousuario` FOREIGN KEY (`idEstadoUsuario`) REFERENCES `estadousuario` (`idEstadoUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_usuarioestado_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.usuarioestado: ~1 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.usuarioestado: ~6 rows (aproximadamente)
 INSERT INTO `usuarioestado` (`idUsuarioEstado`, `fechaFin`, `fechaInicio`, `idEstadoUsuario`, `idUsuario`) VALUES
-	(1, NULL, '2025-09-01 19:22:43', 1, 1);
+	(1, '2025-09-09 15:01:58', '2025-09-01 19:22:43', 1, 1),
+	(2, NULL, '2025-09-09 15:01:28', 1, 3),
+	(3, NULL, '2025-09-09 15:01:44', 2, 4),
+	(4, '2025-09-09 15:02:10', '2025-09-09 15:01:58', 2, 1),
+	(5, '2025-09-09 15:02:23', '2025-09-09 15:02:10', 1, 1),
+	(6, NULL, '2025-09-09 15:02:23', 3, 1);
 
 -- Volcando estructura para tabla ovo.usuariogrupo
 CREATE TABLE IF NOT EXISTS `usuariogrupo` (
@@ -576,18 +609,20 @@ CREATE TABLE IF NOT EXISTS `usuariogrupo` (
   KEY `FK_usuariogrupo_grupo` (`idGrupo`),
   CONSTRAINT `FK_usuariogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_usuariogrupo_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.usuariogrupo: ~2 rows (aproximadamente)
+-- Volcando datos para la tabla ovo.usuariogrupo: ~4 rows (aproximadamente)
 INSERT INTO `usuariogrupo` (`idUsuarioGrupo`, `idUsuario`, `idGrupo`, `fechaInicio`, `fechaFin`) VALUES
-	(6, 1, 2, '2025-08-25 19:15:20', NULL),
-	(7, 1, 1, '2025-08-25 19:22:53', NULL);
+	(6, 1, 2, '2025-08-25 19:15:20', '2025-09-09 16:17:44'),
+	(7, 1, 1, '2025-08-25 19:22:53', NULL),
+	(8, 1, 2, '2025-09-09 16:18:05', '2025-09-09 16:18:15'),
+	(9, 1, 2, '2025-09-09 16:18:24', NULL);
 
 -- Volcando estructura para tabla ovo.usuariopermiso
 CREATE TABLE IF NOT EXISTS `usuariopermiso` (
   `idUsuarioPermiso` int(11) NOT NULL AUTO_INCREMENT,
-  `idPermiso` int(11) DEFAULT NULL,
   `idUsuario` int(11) DEFAULT NULL,
+  `idPermiso` int(11) DEFAULT NULL,
   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
   `fechaFin` datetime DEFAULT NULL,
   PRIMARY KEY (`idUsuarioPermiso`),
@@ -595,12 +630,14 @@ CREATE TABLE IF NOT EXISTS `usuariopermiso` (
   KEY `FK_usuariopermiso_usuario` (`idUsuario`),
   CONSTRAINT `FK_usuariopermiso_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `FK_usuariopermiso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Volcando datos para la tabla ovo.usuariopermiso: ~1 rows (aproximadamente)
-INSERT INTO `usuariopermiso` (`idUsuarioPermiso`, `idPermiso`, `idUsuario`, `fechaInicio`, `fechaFin`) VALUES
+-- Volcando datos para la tabla ovo.usuariopermiso: ~4 rows (aproximadamente)
+INSERT INTO `usuariopermiso` (`idUsuarioPermiso`, `idUsuario`, `idPermiso`, `fechaInicio`, `fechaFin`) VALUES
 	(1, 1, 1, '2025-08-25 18:52:49', NULL),
-	(2, 2, 1, '2025-08-26 12:10:25', '2025-08-26 17:24:08');
+	(2, 1, 2, '2025-08-26 12:10:25', '2025-09-09 16:33:37'),
+	(4, 1, 3, '2025-09-09 16:33:24', '2025-09-09 16:33:37'),
+	(5, 1, 4, '2025-09-09 16:33:24', '2025-09-09 16:33:37');
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
