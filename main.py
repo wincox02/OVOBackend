@@ -225,6 +225,30 @@ def requires_permission(permission_name: str):
         return wrapped
     return decorator
 
+def historial_acceso(user_id: int, estadoAcceso: str, ip: str, user_agent: str):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM estadoacceso WHERE nombreEstadoAcceso = %s", (estadoAcceso,))
+        estado = cur.fetchone()
+        if not estado:
+            log(f"historial_acceso: estadoAcceso '{estadoAcceso}' no encontrado")
+            return
+        cur.execute(
+            "INSERT INTO historialacceso (idUsuario, idEstadoAcceso, ipAcceso, navegador) VALUES (%s, %s, %s, %s)",
+            (user_id, estado['idEstadoAcceso'], ip, user_agent)
+        )
+        conn.commit()
+    except Exception as e:
+        log(f"historial_acceso error: {e}\n{traceback.format_exc()}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
 # Endpoint para autenticación con correo y contraseña
 @app.route('/api/v1/auth/login', methods=['POST'])
 def login_email_password():
@@ -243,9 +267,11 @@ def login_email_password():
 
         user = get_user_by_email(correo)
         if not user:
+            historial_acceso(0, "Fallido", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR5", "message": "Credenciales inválidas"}), 401
 
         if not verify_password(contrasena, user.get('contrasena') or ''):
+            historial_acceso(user['idUsuario'], "Fallido", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR5", "message": "Credenciales inválidas"}), 401
 
         token = generate_token(user['idUsuario'])
@@ -262,9 +288,11 @@ def login_email_password():
             "grupos": grupos,
         })
         resp.headers['new_token'] = token
+        historial_acceso(user['idUsuario'], "Exitoso", request.remote_addr or '', request.headers.get('User-Agent', ''))
         return resp, 200
     except Exception as e:
         log(f"/auth/login error: {e}\n{traceback.format_exc()}")
+        historial_acceso(0, "Fallido", request.remote_addr or '', request.headers.get('User-Agent', ''))
         return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 500
 
 # Endpoint para autenticación con Google
@@ -276,11 +304,13 @@ def login_google():
             from google.oauth2 import id_token as google_id_token  # type: ignore
             from google.auth.transport import requests as google_requests  # type: ignore
         except Exception:
+            historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 500
 
         data = request.get_json(silent=True) or {}
         id_token = data.get('id_token') or data.get('credential')
         if not id_token:
+            historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 400
 
         request_adapter = google_requests.Request()
@@ -290,11 +320,13 @@ def login_google():
 
         email = claims.get('email')
         if not email:
+            historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 400
 
         user = get_user_by_email(email)
         if not user:
             # No auto-registro por ahora -> credenciales inválidas según criterios
+            historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR5", "message": "Credenciales inválidas"}), 401
 
         token = generate_token(user['idUsuario'])
@@ -311,9 +343,11 @@ def login_google():
             "grupos": grupos,
         })
         resp.headers['new_token'] = token
+        historial_acceso(user['idUsuario'], "Exitoso", request.remote_addr or '', request.headers.get('User-Agent', ''))
         return resp, 200
     except Exception as e:
         log(f"/auth/google error: {e}\n{traceback.format_exc()}")
+        historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
         return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 500
 
 # Endpoint para obtener información del usuario autenticado
@@ -347,11 +381,14 @@ def whoami(current_user_id):
         log(f"/auth/me error: {e}\n{traceback.format_exc()}")
         return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 500
 
+# curl para obtener información del usuario autenticado
+# curl -X GET "{{baseURL}}/api/v1/auth/me" -H "Authorization: Bearer {{token}}"
+
 # ============================ ADMIN: Gestión de perfiles (US003) ============================
 
 # Endpoint para listar todos los usuarios
 @app.route('/api/v1/admin/users', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('LIST_USERS')
 def admin_list_users(current_user_id):
     """Listado de usuarios con sus grupos activos."""
     conn = None
@@ -387,7 +424,7 @@ def admin_list_users(current_user_id):
         return jsonify(data), 200
     except Exception as e:
         log(f"/admin/users GET error: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Ha ocurrido un error al listar los usuarios"}), 500
     finally:
         try:
             if conn:
@@ -397,7 +434,7 @@ def admin_list_users(current_user_id):
 
 # Endpoint para listar todos los grupos
 @app.route('/api/v1/admin/groups', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('LIST_GROUPS')
 def admin_list_groups(current_user_id):
     conn = None
     try:
@@ -416,7 +453,7 @@ def admin_list_groups(current_user_id):
         return jsonify(data), 200
     except Exception as e:
         log(f"/admin/groups GET error: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Ha ocurrido un error al listar los grupos"}), 500
     finally:
         try:
             if conn:
@@ -426,7 +463,7 @@ def admin_list_groups(current_user_id):
 
 # Endpoint para obtener grupos de un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/groups', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_GROUPS')
 def admin_get_user_groups(current_user_id, user_id: int):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -454,9 +491,59 @@ def admin_get_user_groups(current_user_id, user_id: int):
         except Exception:
             pass
 
+# Endpoint para obtener todos los permisos de un usuario
+@app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['GET'])
+@requires_permission('USER_PERMS')
+def admin_get_user_permissions(current_user_id, user_id: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT p.idPermiso, p.nombrePermiso, p.descripcion
+            FROM usuariopermiso up
+            JOIN permiso p ON p.idPermiso = up.idPermiso
+            WHERE up.idUsuario = %s AND (up.fechaFin IS NULL OR up.fechaFin > NOW())
+            ORDER BY p.nombrePermiso
+            """,
+            (user_id,)
+        )
+        rows = cur.fetchall() or []
+        # Obtener los permisos de los grupos a los cuales pertenece y no esta vencido
+        cur.execute(
+            """
+            SELECT p.idPermiso, p.nombrePermiso, p.descripcion
+            FROM permiso p
+            JOIN permisogrupo pg ON pg.idPermiso = p.idPermiso
+            WHERE pg.idGrupo IN (
+                SELECT idGrupo
+                FROM usuariogrupo
+                WHERE idUsuario = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+            )
+        """,
+            (user_id,)
+        )
+        # Unir permisos pero hay que quitar los repetidos (directos y ademas por grupo)
+        extra_rows = cur.fetchall() or []
+        unique = {}
+        for r in (rows + extra_rows):
+            unique[r['idPermiso']] = r  # sobrescribe duplicados por idPermiso
+        rows = list(unique.values())
+        return jsonify(rows), 200
+    except Exception as e:
+        log(f"/admin/users/{user_id}/permissions GET error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
 # Endpoint para asignar un grupo a un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/group', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_GROUPS')
 def admin_set_user_group(current_user_id, user_id: int):
     """Asigna un grupo al usuario sin cerrar asignaciones previas.
     Si ya pertenece (activo) al grupo, devolver error ERR1.
@@ -504,7 +591,7 @@ def admin_set_user_group(current_user_id, user_id: int):
 
 # Endpoint para eliminar el grupo de un usuario (actualizar fechaFin)
 @app.route('/api/v1/admin/users/<int:user_id>/group/<int:id_grupo>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_GROUPS')
 def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
     """Elimina un grupo de un usuario (actualiza fechaFin)."""
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -529,55 +616,9 @@ def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
         except Exception:
             pass
 
-# Endpoint para obtener todos los permisos de un usuario
-@app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_get_user_permissions(current_user_id, user_id: int):
-    conn = None
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor(dictionary=True)
-        cur.execute(
-            """
-            SELECT p.idPermiso, p.nombrePermiso, p.descripcion
-            FROM usuariopermiso up
-            JOIN permiso p ON p.idPermiso = up.idPermiso
-            WHERE up.idUsuario = %s AND (up.fechaFin IS NULL OR up.fechaFin > NOW())
-            ORDER BY p.nombrePermiso
-            """,
-            (user_id,)
-        )
-        rows = cur.fetchall() or []
-        # Obtener los permisos de los grupos a los cuales pertenece y no esta vencido
-        cur.execute(
-            """
-            SELECT p.idPermiso, p.nombrePermiso, p.descripcion
-            FROM permiso p
-            JOIN permisogrupo pg ON pg.idPermiso = p.idPermiso
-            WHERE pg.idGrupo IN (
-                SELECT idGrupo
-                FROM usuariogrupo
-                WHERE idUsuario = %s AND (fechaFin IS NULL OR fechaFin > NOW())
-            )
-        """,
-            (user_id,)
-        )
-        # Unir permisos pero hay que quitar los repetidos (directos y ademas por grupo)
-        rows = {**{row['idPermiso']: row for row in rows}, **{row['idPermiso']: row for row in cur.fetchall() or []}}
-        return jsonify(rows), 200
-    except Exception as e:
-        log(f"/admin/users/{user_id}/permissions GET error: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        try:
-            if conn:
-                conn.close()
-        except Exception:
-            pass
-
 # Endpoint para agregar un permiso a un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_PERMS')
 def admin_add_user_permission(current_user_id, user_id: int):
     """Agrega un permiso directo. Si ya existe activo, no duplica."""
     data = request.get_json(silent=True) or {}
@@ -619,7 +660,7 @@ def admin_add_user_permission(current_user_id, user_id: int):
 
 # Endpoint para eliminar un permiso directo de un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/permissions/<int:id_permiso>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_PERMS')
 def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -654,7 +695,7 @@ def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int)
 
 # Endpoint para listar todos los permisos disponibles
 @app.route('/api/v1/admin/permissions', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('LIST_PERMS')
 def admin_list_permissions(current_user_id):
     """Lista de permisos disponibles. Soporta filtro ?search= término."""
     conn = None
@@ -686,7 +727,7 @@ def admin_list_permissions(current_user_id):
 
 # Endpoint para reemplazar permisos de un usuario (quitar y agregar)
 @app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_PERMS')
 def admin_set_user_permissions_bulk(current_user_id, user_id: int):
     """Reemplaza el conjunto de permisos directos activos de un usuario por los provistos.
        Reglas:
@@ -766,7 +807,7 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
 
 # Endpoint para obtener el historial de accesos
 @app.route('/api/v1/admin/access-history', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_HISTORY')
 def admin_access_history(current_user_id):
     """Listado del historial de accesos con filtros.
     Filtros opcionales (query params):
@@ -790,6 +831,8 @@ def admin_access_history(current_user_id):
 
         # userId
         user_id_s = args.get('userId')
+        if not user_id_s:
+            return jsonify({"errorCode": "ERR2", "message": "El userId es un campo obligatorio."}), 400
         if user_id_s is not None and user_id_s != '':
             try:
                 user_id_val = int(user_id_s)
@@ -910,7 +953,7 @@ def admin_access_history(current_user_id):
 
 # Endpoint para exportar el historial de accesos
 @app.route('/api/v1/admin/access-history/export', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('USER_HISTORY')
 def admin_access_history_export(current_user_id):
     """Exporta el historial de accesos en CSV o PDF (si disponible). Usa los mismos filtros que la lista.
     Query: format=csv|pdf
@@ -932,6 +975,8 @@ def admin_access_history_export(current_user_id):
 
         # userId
         user_id_s = args.get('userId')
+        if not user_id_s:
+            return jsonify({"errorCode": "ERR2", "message": "El userId es un campo obligatorio."}), 400
         if user_id_s is not None and user_id_s != '':
             try:
                 user_id_val = int(user_id_s)
@@ -1013,6 +1058,8 @@ def admin_access_history_export(current_user_id):
 
         cur.execute(sql, tuple(params))
         rows = cur.fetchall() or []
+        if not rows:
+            return jsonify({"errorCode": "ERR3", "message": "No hay datos para exportar con los filtros aplicados."}), 400
 
         if fmt == 'csv':
             import csv
@@ -5986,8 +6033,2645 @@ def admin_career_type_delete(current_user_id, id_tipo):
             if conn: conn.close()
         except Exception: pass
 
+  
+# ============================ ABM País (US031) ============================
+# Tabla: pais (idPais, nombrePais, fechaFin)
+# Endpoints (prefijo admin):
+#  GET    /api/v1/admin/catalog/countries              -> listado (activos por defecto, ?includeInactive=1 para todos)
+#  POST   /api/v1/admin/catalog/countries              -> alta (nombrePais) ERR1 si vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/countries/<id>         -> detalle
+#  PUT    /api/v1/admin/catalog/countries/<id>         -> modificar nombre ERR1 si vacío o duplicado activo
+#  DELETE /api/v1/admin/catalog/countries/<id>         -> baja lógica (fechaFin=NOW()) ERR2 en error técnico / inexistente
+# Errores:
+#  ERR1: "Debe ingresar un nombre para el país." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar el país. Intente nuevamente." (error técnico / no encontrado)
 
+def _pais_exists_active(cur, nombre, exclude_id=None):
+    q = "SELECT idPais FROM pais WHERE nombrePais=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idPais<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/countries', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_countries_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais ORDER BY nombrePais")
+        else:
+            cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais WHERE fechaFin IS NULL ORDER BY nombrePais")
+        rows = cur.fetchall() or []
+        return jsonify({'countries': rows}), 200
+    except Exception as e:
+        log(f"US031 list pais error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo listar países.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/countries', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_country_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombrePais') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _pais_exists_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
+        cur.execute("INSERT INTO pais (nombrePais) VALUES (%s)", (nombre,))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idPais': new_id}), 201
+    except Exception as e:
+        log(f"US031 create pais error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_country_detail(current_user_id, id_pais):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais WHERE idPais=%s", (id_pais,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'País no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US031 detail pais error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener país.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_country_update(current_user_id, id_pais):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombrePais') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'País no encontrado.'}), 404
+        if _pais_exists_active(cur, nombre, exclude_id=id_pais):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
+        cur.execute("UPDATE pais SET nombrePais=%s WHERE idPais=%s", (nombre, id_pais))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US031 update pais error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_country_delete(current_user_id, id_pais):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el país. Intente nuevamente.'}), 404
+        cur.execute("UPDATE pais SET fechaFin=NOW() WHERE idPais=%s AND fechaFin IS NULL", (id_pais,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US031 delete pais error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el país. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US031 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePais\":\"Argentina\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePais\":\"Argentina Modificada\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}"
+
+
+# ============================ ABM Provincia (US032) ============================
+# Tabla: provincia (idProvincia, nombreProvincia, idPais, fechaFin)
+# Requisito: cada provincia asociada a un país existente (tabla pais).
+# Endpoints (prefijo admin):
+#  GET    /api/v1/admin/catalog/provinces                 -> listado (solo activas, ?includeInactive=1 para todas)
+#  POST   /api/v1/admin/catalog/provinces                 -> alta (nombreProvincia, idPais) ERR1 nombre vacío, ERR2 país faltante/ inválido, duplicado activo (nombre+idPais)
+#  GET    /api/v1/admin/catalog/provinces/<id>            -> detalle
+#  PUT    /api/v1/admin/catalog/provinces/<id>            -> modificar (mismos campos) ERR1 / ERR2 según validaciones
+#  DELETE /api/v1/admin/catalog/provinces/<id>            -> baja lógica (fechaFin=NOW()) ERR3 si error técnico / inexistente
+# Errores:
+#   ERR1: "Debe ingresar un nombre para la provincia." (nombre vacío)
+#   ERR2: "Debe seleccionar un país." (idPais vacío / inexistente / duplicado activo con mismo nombre en mismo país)
+#   ERR3: "No se pudo eliminar la provincia. Intente nuevamente." (falla al eliminar o no encontrada)
+
+def _provincia_duplicate_active(cur, nombre, id_pais, exclude_id=None):
+    q = "SELECT idProvincia FROM provincia WHERE nombreProvincia=%s AND idPais=%s AND fechaFin IS NULL"
+    params = [nombre, id_pais]
+    if exclude_id:
+        q += " AND idProvincia<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+def _pais_exists(cur, id_pais):
+    cur.execute("SELECT idPais FROM pais WHERE idPais=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (id_pais,))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/provinces', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_provinces_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia ORDER BY nombreProvincia")
+        else:
+            cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia WHERE fechaFin IS NULL ORDER BY nombreProvincia")
+        rows = cur.fetchall() or []
+        return jsonify({'provinces': rows}), 200
+    except Exception as e:
+        log(f"US032 list provincia error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo listar provincias.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/provinces', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_province_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreProvincia') or '').strip()
+    id_pais = data.get('idPais')
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la provincia.'}), 400
+    if not id_pais:
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # validar país
+        if not _pais_exists(cur, id_pais):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
+        if _provincia_duplicate_active(cur, nombre, id_pais):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400  # reutilizamos ERR2 para duplicado por criterio HU (no hay código específico)
+        cur.execute("INSERT INTO provincia (nombreProvincia, idPais, fechaFin) VALUES (%s,%s,NULL)", (nombre, id_pais))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idProvincia': new_id}), 201
+    except Exception as e:
+        log(f"US032 create provincia error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_province_detail(current_user_id, id_provincia):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia WHERE idProvincia=%s", (id_provincia,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Provincia no encontrada.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US032 detail provincia error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener provincia.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_province_update(current_user_id, id_provincia):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreProvincia') or '').strip()
+    id_pais = data.get('idPais')
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la provincia.'}), 400
+    if not id_pais:
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Provincia no encontrada.'}), 404
+        if not _pais_exists(cur, id_pais):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
+        if _provincia_duplicate_active(cur, nombre, id_pais, exclude_id=id_provincia):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
+        cur.execute("UPDATE provincia SET nombreProvincia=%s, idPais=%s WHERE idProvincia=%s", (nombre, id_pais, id_provincia))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US032 update provincia error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_province_delete(current_user_id, id_provincia):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la provincia. Intente nuevamente.'}), 404
+        cur.execute("UPDATE provincia SET fechaFin=NOW() WHERE idProvincia=%s AND fechaFin IS NULL", (id_provincia,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US032 delete provincia error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la provincia. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US032 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreProvincia\":\"Córdoba\",\"idPais\":1}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreProvincia\":\"Córdoba Norte\",\"idPais\":1}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}"
+
+
+# ============================ ABM Localidad (US033) ============================
+# Tabla: localidad (idLocalidad, nombreLocalidad, idProvincia, fechaFin)
+# Requisito: cada localidad asociada a provincia existente (tabla provincia).
+# Endpoints (prefijo admin):
+#  GET    /api/v1/admin/catalog/localities                 -> listado (activas por defecto, ?includeInactive=1)
+#  POST   /api/v1/admin/catalog/localities                 -> alta (nombreLocalidad, idProvincia) ERR1 nombre vacío, ERR2 provincia inválida/faltante, duplicado (nombre+provincia) activo
+#  GET    /api/v1/admin/catalog/localities/<id>            -> detalle
+#  PUT    /api/v1/admin/catalog/localities/<id>            -> modificar campos ERR1/ERR2
+#  DELETE /api/v1/admin/catalog/localities/<id>            -> baja lógica (fechaFin=NOW()) ERR3 si error técnico / inexistente
+# Errores:
+#   ERR1: "Debe ingresar un nombre para la localidad." (nombre vacío)
+#   ERR2: "Debe seleccionar una provincia asociada." (idProvincia faltante / inválida / duplicado activo)
+#   ERR3: "No se pudo eliminar la localidad. Intente nuevamente." (falla o no encontrada)
+
+def _provincia_exists(cur, id_provincia):
+    cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (id_provincia,))
+    return cur.fetchone() is not None
+
+def _localidad_duplicate_active(cur, nombre, id_provincia, exclude_id=None):
+    q = "SELECT idLocalidad FROM localidad WHERE nombreLocalidad=%s AND idProvincia=%s AND fechaFin IS NULL"
+    params = [nombre, id_provincia]
+    if exclude_id:
+        q += " AND idLocalidad<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/localities', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_localities_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad ORDER BY nombreLocalidad")
+        else:
+            cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad WHERE fechaFin IS NULL ORDER BY nombreLocalidad")
+        rows = cur.fetchall() or []
+        return jsonify({'localities': rows}), 200
+    except Exception as e:
+        log(f"US033 list localidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo listar localidades.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/localities', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_locality_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreLocalidad') or '').strip()
+    id_provincia = data.get('idProvincia')
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la localidad.'}), 400
+    if not id_provincia:
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if not _provincia_exists(cur, id_provincia):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+        if _localidad_duplicate_active(cur, nombre, id_provincia):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+        cur.execute("INSERT INTO localidad (nombreLocalidad, idProvincia, fechaFin) VALUES (%s,%s,NULL)", (nombre, id_provincia))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idLocalidad': new_id}), 201
+    except Exception as e:
+        log(f"US033 create localidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_locality_detail(current_user_id, id_localidad):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad WHERE idLocalidad=%s", (id_localidad,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Localidad no encontrada.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US033 detail localidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener localidad.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_locality_update(current_user_id, id_localidad):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreLocalidad') or '').strip()
+    id_provincia = data.get('idProvincia')
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la localidad.'}), 400
+    if not id_provincia:
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idLocalidad FROM localidad WHERE idLocalidad=%s", (id_localidad,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Localidad no encontrada.'}), 404
+        if not _provincia_exists(cur, id_provincia):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+        if _localidad_duplicate_active(cur, nombre, id_provincia, exclude_id=id_localidad):
+            return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
+        cur.execute("UPDATE localidad SET nombreLocalidad=%s, idProvincia=%s WHERE idLocalidad=%s", (nombre, id_provincia, id_localidad))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US033 update localidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_locality_delete(current_user_id, id_localidad):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idLocalidad FROM localidad WHERE idLocalidad=%s", (id_localidad,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la localidad. Intente nuevamente.'}), 404
+        cur.execute("UPDATE localidad SET fechaFin=NOW() WHERE idLocalidad=%s AND fechaFin IS NULL", (id_localidad,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US033 delete localidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la localidad. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US033 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreLocalidad\":\"Guaymallén\",\"idProvincia\":1}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreLocalidad\":\"Guaymallén Centro\",\"idProvincia\":1}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}"
+
+
+# ACA AGREGAR LAS HUs SIGUIENTES
+
+# ============================ ABM Género (US034) ============================
+# Tabla: genero (idGenero, nombreGenero, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/genders                  -> listado (activas por defecto, ?includeInactive=1)
+#  POST   /api/v1/admin/catalog/genders                  -> alta (nombreGenero) ERR1 nombre vacío (y se reutiliza para duplicado)
+#  GET    /api/v1/admin/catalog/genders/<id>             -> detalle
+#  PUT    /api/v1/admin/catalog/genders/<id>             -> modificar nombre (ERR1 si vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/genders/<id>             -> baja lógica (fechaFin=NOW()) ERR2 si falla / inexistente
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el género." (nombre vacío o duplicado activo)
+#   ERR2: "No se pudo eliminar el género. Intente nuevamente." (error al eliminar o no encontrado)
+
+def _genero_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idGenero FROM genero WHERE nombreGenero=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idGenero<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/genders', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_genders_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero ORDER BY nombreGenero")
+        else:
+            cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero WHERE fechaFin IS NULL ORDER BY nombreGenero")
+        rows = cur.fetchall() or []
+        return jsonify({'genders': rows}), 200
+    except Exception as e:
+        log(f"US034 list genero error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al listar géneros.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/genders', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_gender_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreGenero') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _genero_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
+        cur.execute("INSERT INTO genero (nombreGenero, fechaFin) VALUES (%s,NULL)", (nombre,))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idGenero': new_id}), 201
+    except Exception as e:
+        log(f"US034 create genero error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_gender_detail(current_user_id, id_genero):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero WHERE idGenero=%s", (id_genero,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Género no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US034 detail genero error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener género.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_gender_update(current_user_id, id_genero):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreGenero') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idGenero FROM genero WHERE idGenero=%s", (id_genero,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Género no encontrado.'}), 404
+        if _genero_duplicate_active(cur, nombre, exclude_id=id_genero):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
+        cur.execute("UPDATE genero SET nombreGenero=%s WHERE idGenero=%s", (nombre, id_genero))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US034 update genero error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_gender_delete(current_user_id, id_genero):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idGenero FROM genero WHERE idGenero=%s", (id_genero,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el género. Intente nuevamente.'}), 404
+        cur.execute("UPDATE genero SET fechaFin=NOW() WHERE idGenero=%s AND fechaFin IS NULL", (id_genero,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US034 delete genero error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el género. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US034 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGenero\":\"No Binario\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGenero\":\"No Binario (Actualizado)\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}"
+
+
+
+
+# ============================ ABM EstadoUsuario (US035) ============================
+# Tabla: estadousuario (idEstadoUsuario, nombreEstadoUsuario, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/user-statuses                 -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  POST   /api/v1/admin/catalog/user-statuses                 -> alta (nombreEstadoUsuario) ERR1 si vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/user-statuses/<id>            -> detalle
+#  PUT    /api/v1/admin/catalog/user-statuses/<id>            -> modificar nombre (ERR1 si vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/user-statuses/<id>            -> baja lógica (fechaFin=NOW()) ERR2 si falla o no existe
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el estado." (nombre vacío o duplicado activo)
+#   ERR2: "No se pudo eliminar el estado. Intente nuevamente." (error técnico o inexistente)
+
+def _estado_usuario_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idEstadoUsuario FROM estadousuario WHERE nombreEstadoUsuario=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idEstadoUsuario<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/user-statuses', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_statuses_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idEstadoUsuario, nombreEstadoUsuario, fechaFin FROM estadousuario ORDER BY nombreEstadoUsuario")
+        else:
+            cur.execute("SELECT idEstadoUsuario, nombreEstadoUsuario, fechaFin FROM estadousuario WHERE fechaFin IS NULL ORDER BY nombreEstadoUsuario")
+        rows = cur.fetchall() or []
+        return jsonify({'userStatuses': rows}), 200
+    except Exception as e:
+        log(f"US035 list estadoUsuario error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al listar estados.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/user-statuses', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_status_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoUsuario') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _estado_usuario_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+        cur.execute("INSERT INTO estadousuario (nombreEstadoUsuario, fechaFin) VALUES (%s, NULL)", (nombre,))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idEstadoUsuario': new_id}), 201
+    except Exception as e:
+        log(f"US035 create estadoUsuario error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_status_detail(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idEstadoUsuario, nombreEstadoUsuario, fechaFin FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Estado no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US035 detail estadoUsuario error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener estado.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_status_update(current_user_id, id_estado):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoUsuario') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoUsuario FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Estado no encontrado.'}), 404
+        if _estado_usuario_duplicate_active(cur, nombre, exclude_id=id_estado):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+        cur.execute("UPDATE estadousuario SET nombreEstadoUsuario=%s WHERE idEstadoUsuario=%s", (nombre, id_estado))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US035 update estadoUsuario error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_status_delete(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoUsuario FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado. Intente nuevamente.'}), 404
+        cur.execute("UPDATE estadousuario SET fechaFin=NOW() WHERE idEstadoUsuario=%s AND fechaFin IS NULL", (id_estado,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US035 delete estadoUsuario error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US035 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoUsuario\":\"Pendiente\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/user-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoUsuario\":\"Suspendido\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/user-statuses/1" -H "Authorization: Bearer {{token}}"
+
+# ============================ ABM Permiso (US036) ============================
+# Tabla: permiso (idPermiso, nombrePermiso, descripcion, fechaFin)
+# Endpoints (prefijo admin):
+#  GET    /api/v1/admin/catalog/permissions              -> listado (activos por defecto, ?includeInactive=1)
+#  POST   /api/v1/admin/catalog/permissions              -> alta (nombrePermiso obligatorio, descripcion opcional) ERR1 nombre vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/permissions/<id>         -> detalle
+#  PUT    /api/v1/admin/catalog/permissions/<id>         -> modificar nombre/descripcion (ERR1 si nombre vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/permissions/<id>         -> baja lógica (fechaFin=NOW()) ERR2 si falla o inexistente
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el permiso." (nombre vacío o duplicado activo)
+#   ERR2: "No se pudo eliminar el permiso. Intente nuevamente." (error técnico / no encontrado)
+
+def _permiso_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idPermiso FROM permiso WHERE nombrePermiso=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idPermiso<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/permissions', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_permissions_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idPermiso, nombrePermiso, descripcion, fechaFin FROM permiso ORDER BY nombrePermiso")
+        else:
+            cur.execute("SELECT idPermiso, nombrePermiso, descripcion, fechaFin FROM permiso WHERE fechaFin IS NULL ORDER BY nombrePermiso")
+        rows = cur.fetchall() or []
+        return jsonify({'permissions': rows}), 200
+    except Exception as e:
+        log(f"US036 list permiso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al listar permisos.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/permissions', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_permission_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombrePermiso') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _permiso_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+        cur.execute("INSERT INTO permiso (nombrePermiso, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
+        conn.commit()
+        new_id = cur.lastrowid
+        return jsonify({'ok':True,'idPermiso': new_id}), 201
+    except Exception as e:
+        log(f"US036 create permiso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_permission_detail(current_user_id, id_permiso):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idPermiso, nombrePermiso, descripcion, fechaFin FROM permiso WHERE idPermiso=%s", (id_permiso,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Permiso no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US036 detail permiso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener permiso.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_permission_update(current_user_id, id_permiso):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombrePermiso') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s", (id_permiso,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Permiso no encontrado.'}), 404
+        if _permiso_duplicate_active(cur, nombre, exclude_id=id_permiso):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+        cur.execute("UPDATE permiso SET nombrePermiso=%s, descripcion=%s WHERE idPermiso=%s", (nombre, descripcion, id_permiso))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US036 update permiso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_permission_delete(current_user_id, id_permiso):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s", (id_permiso,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el permiso. Intente nuevamente.'}), 404
+        cur.execute("UPDATE permiso SET fechaFin=NOW() WHERE idPermiso=%s AND fechaFin IS NULL", (id_permiso,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US036 delete permiso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el permiso. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US036 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePermiso\":\"VER_REPORTES\",\"descripcion\":\"Permite ver reportes\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePermiso\":\"VER_REPORTES\",\"descripcion\":\"Puede ver y exportar reportes\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}"
+
+
+
+
+
+# ============================ ABM Grupo (US037) ============================
+# Tablas: grupo (idGrupo, nombreGrupo, descripcion, fechaFin), permisogrupo (idPermisoGrupo, idGrupo, idPermiso, fechaInicio, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/groups                  -> listado grupos (activos por defecto; ?includeInactive=1 para todos) + permisos asociados activos
+#  POST   /api/v1/admin/catalog/groups                  -> alta (nombreGrupo obligatorio, descripcion opcional, lista permisos opcional) ERR1 nombre vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/groups/<id>             -> detalle grupo + permisos activos
+#  PUT    /api/v1/admin/catalog/groups/<id>             -> modificar nombre/descripcion/permisos (reemplaza set de permisos) ERR1 nombre vacío o duplicado
+#  DELETE /api/v1/admin/catalog/groups/<id>             -> baja lógica grupo (fechaFin=NOW()) y se cierran permisos (fechaFin=NOW()) ERR2 si error o inexistente
+# Notas:
+#  - Al actualizar permisos se cierran (fechaFin=NOW()) los actuales activos no incluidos y se insertan nuevos (fechaInicio=NOW()).
+# Errores:
+#  ERR1: "Debe ingresar un nombre para el grupo." (vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar el grupo. Intente nuevamente." (error técnico o no encontrado)
+
+def _grupo_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idGrupo FROM grupo WHERE nombreGrupo=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idGrupo<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+def _fetch_permisos_por_grupo(cur, id_grupo):
+    cur.execute(
+        "SELECT pg.idPermisoGrupo, p.idPermiso, p.nombrePermiso, p.descripcion, pg.fechaInicio, pg.fechaFin "
+        "FROM permisogrupo pg JOIN permiso p ON p.idPermiso=pg.idPermiso "
+        "WHERE pg.idGrupo=%s AND pg.fechaFin IS NULL", (id_grupo,))
+    return cur.fetchall() or []
+
+@app.route('/api/v1/admin/catalog/groups', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_groups_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idGrupo, nombreGrupo, descripcion, fechaFin FROM grupo ORDER BY nombreGrupo")
+        else:
+            cur.execute("SELECT idGrupo, nombreGrupo, descripcion, fechaFin FROM grupo WHERE fechaFin IS NULL ORDER BY nombreGrupo")
+        grupos = cur.fetchall() or []
+        # Adjuntar permisos activos de cada grupo
+        for g in grupos:
+            cur2 = conn.cursor(dictionary=True)
+            cur2.execute(
+                "SELECT p.idPermiso, p.nombrePermiso FROM permisogrupo pg JOIN permiso p ON p.idPermiso=pg.idPermiso "
+                "WHERE pg.idGrupo=%s AND pg.fechaFin IS NULL", (g['idGrupo'],))
+            g['permisos'] = cur2.fetchall() or []
+        return jsonify({'groups': grupos}), 200
+    except Exception as e:
+        log(f"US037 list grupo error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar grupos.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/groups', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreGrupo') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    permisos = data.get('permisos') or []  # lista de idPermiso
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 400
+    if not isinstance(permisos, list):
+        permisos = []
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _grupo_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 400
+        cur.execute("INSERT INTO grupo (nombreGrupo, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
+        new_id = cur.lastrowid
+        # Insertar permisos
+        if permisos:
+            for pid in permisos:
+                try:
+                    cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (pid,))
+                    if cur.fetchone():
+                        cur.execute("INSERT INTO permisogrupo (idGrupo, idPermiso, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (new_id, pid))
+                except Exception:
+                    pass
+        conn.commit()
+        return jsonify({'ok':True,'idGrupo': new_id}), 201
+    except Exception as e:
+        log(f"US037 create grupo error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_detail(current_user_id, id_grupo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idGrupo, nombreGrupo, descripcion, fechaFin FROM grupo WHERE idGrupo=%s", (id_grupo,))
+        g = cur.fetchone()
+        if not g:
+            return jsonify({'errorCode':'ERR1','message':'Grupo no encontrado.'}), 404
+        cur.execute(
+            "SELECT p.idPermiso, p.nombrePermiso FROM permisogrupo pg JOIN permiso p ON p.idPermiso=pg.idPermiso "
+            "WHERE pg.idGrupo=%s AND pg.fechaFin IS NULL", (id_grupo,))
+        g['permisos'] = cur.fetchall() or []
+        return jsonify(g), 200
+    except Exception as e:
+        log(f"US037 detail grupo error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener grupo.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_update(current_user_id, id_grupo):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreGrupo') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    permisos = data.get('permisos') or []
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 400
+    if not isinstance(permisos, list):
+        permisos = []
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idGrupo FROM grupo WHERE idGrupo=%s", (id_grupo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Grupo no encontrado.'}), 404
+        if _grupo_duplicate_active(cur, nombre, exclude_id=id_grupo):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 400
+        cur.execute("UPDATE grupo SET nombreGrupo=%s, descripcion=%s WHERE idGrupo=%s", (nombre, descripcion, id_grupo))
+        # Actualizar permisos: cerrar los no incluidos y agregar los nuevos
+        cur.execute("SELECT idPermiso FROM permisogrupo WHERE idGrupo=%s AND fechaFin IS NULL", (id_grupo,))
+        actuales = {r[0] for r in cur.fetchall() or []}
+        nuevos = set([pid for pid in permisos if isinstance(pid, int)])
+        a_cerrar = actuales - nuevos
+        a_agregar = nuevos - actuales
+        # Cerrar
+        if a_cerrar:
+            cur.execute(
+                f"UPDATE permisogrupo SET fechaFin=NOW() WHERE idGrupo=%s AND idPermiso IN ({','.join(['%s']*len(a_cerrar))}) AND fechaFin IS NULL",
+                (id_grupo, *a_cerrar))
+        # Agregar
+        for pid in a_agregar:
+            try:
+                cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (pid,))
+                if cur.fetchone():
+                    cur.execute("INSERT INTO permisogrupo (idGrupo, idPermiso, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (id_grupo, pid))
+            except Exception:
+                pass
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US037 update grupo error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_delete(current_user_id, id_grupo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idGrupo FROM grupo WHERE idGrupo=%s", (id_grupo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el grupo. Intente nuevamente.'}), 404
+        cur.execute("UPDATE grupo SET fechaFin=NOW() WHERE idGrupo=%s AND fechaFin IS NULL", (id_grupo,))
+        # Cerrar permisos activos asociados
+        cur.execute("UPDATE permisogrupo SET fechaFin=NOW() WHERE idGrupo=%s AND fechaFin IS NULL", (id_grupo,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US037 delete grupo error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el grupo. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US037 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear (con permisos 1 y 2):
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGrupo\":\"Supervisores\",\"descripcion\":\"Grupo de supervisión\",\"permisos\":[1,2]}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}"
+# Actualizar (remover 2, agregar 1 y 3):
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGrupo\":\"Supervisores\",\"descripcion\":\"Grupo actualizado\",\"permisos\":[1,3]}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}"
+
+
+
+
+# ============================ ABM TipoInstitución (US038) ============================
+# Tabla: tipoinstitucion (idTipoInstitucion, nombreTipoInstitucion, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/institution-types                  -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  POST   /api/v1/admin/catalog/institution-types                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado)
+#  GET    /api/v1/admin/catalog/institution-types/<id>             -> detalle
+#  PUT    /api/v1/admin/catalog/institution-types/<id>             -> modificar nombre ERR1 (vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/institution-types/<id>             -> baja lógica (fechaFin=NOW()) ERR2 en error/no encontrado
+# Errores:
+#  ERR1: "Debe ingresar un nombre para el tipo de institución." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar el tipo de institución. Intente nuevamente." (error técnico o inexistente)
+
+def _tipo_institucion_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idTipoInstitucion FROM tipoinstitucion WHERE nombreTipoInstitucion=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idTipoInstitucion<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/institution-types', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_types_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idTipoInstitucion, nombreTipoInstitucion, fechaFin FROM tipoinstitucion ORDER BY nombreTipoInstitucion")
+        else:
+            cur.execute("SELECT idTipoInstitucion, nombreTipoInstitucion, fechaFin FROM tipoinstitucion WHERE fechaFin IS NULL ORDER BY nombreTipoInstitucion")
+        tipos = cur.fetchall() or []
+        return jsonify({'institutionTypes': tipos}), 200
+    except Exception as e:
+        log(f"US038 list tipoInstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar tipos de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-types', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_type_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _tipo_institucion_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
+        cur.execute("INSERT INTO tipoinstitucion (nombreTipoInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idTipoInstitucion': new_id}), 201
+    except Exception as e:
+        log(f"US038 create tipoInstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_type_detail(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idTipoInstitucion, nombreTipoInstitucion, fechaFin FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
+        t = cur.fetchone()
+        if not t:
+            return jsonify({'errorCode':'ERR1','message':'Tipo de institución no encontrado.'}), 404
+        return jsonify(t), 200
+    except Exception as e:
+        log(f"US038 detail tipoInstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener tipo de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_type_update(current_user_id, id_tipo):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoInstitucion FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Tipo de institución no encontrado.'}), 404
+        if _tipo_institucion_duplicate_active(cur, nombre, exclude_id=id_tipo):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
+        cur.execute("UPDATE tipoinstitucion SET nombreTipoInstitucion=%s WHERE idTipoInstitucion=%s", (nombre, id_tipo))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US038 update tipoInstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_type_delete(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoInstitucion FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de institución. Intente nuevamente.'}), 404
+        cur.execute("UPDATE tipoinstitucion SET fechaFin=NOW() WHERE idTipoInstitucion=%s AND fechaFin IS NULL", (id_tipo,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US038 delete tipoInstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de institución. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US038 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoInstitucion\":\"Universidad Privada\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoInstitucion\":\"Instituto Técnico\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}"
+
+
+
+
+
+
+
+ # ============================ ABM ModalidadCarreraInstitución (US039) ============================
+ # Tabla: modalidadcarrerainstitucion (idModalidadCarreraInstitucion, nombreModalidad, fechaFin?)
+ # Según dump, la tabla actual solo muestra id y nombreModalidad (no fechaFin). Para cumplir baja lógica añadiremos control si existe fechaFin;
+ # si no existe la columna, la baja será física (DELETE). Asumimos existencia potencial de fechaFin por consistencia; si no está, DELETE.
+ # Endpoints:
+ #  GET    /api/v1/admin/catalog/career-modalities                  -> listado (activos por defecto; ?includeInactive=1 para todos si existe fechaFin)
+ #  POST   /api/v1/admin/catalog/career-modalities                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
+ #  GET    /api/v1/admin/catalog/career-modalities/<id>             -> detalle
+ #  PUT    /api/v1/admin/catalog/career-modalities/<id>             -> modificar nombre ERR1 (vacío o duplicado)
+ #  DELETE /api/v1/admin/catalog/career-modalities/<id>             -> baja lógica (fechaFin=NOW()) o física si no hay columna; ERR2 en error/no encontrado
+ # Errores:
+ #  ERR1: "Debe ingresar un nombre para la modalidad." (nombre vacío o duplicado activo)
+ #  ERR2: "No se pudo eliminar la modalidad. Intente nuevamente." (error técnico o inexistente)
+
+def _modalidad_duplicate_active(cur, nombre, exclude_id=None):
+    # Intentar usar fechaFin si existe; fallback sin fechaFin
+    try:
+        q = "SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE nombreModalidad=%s AND (fechaFin IS NULL)"
+        params = [nombre]
+        if exclude_id:
+            q += " AND idModalidadCarreraInstitucion<>%s"
+            params.append(exclude_id)
+        cur.execute(q, tuple(params))
+    except mysql.connector.Error:
+        # Sin fechaFin
+        q = "SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE nombreModalidad=%s"
+        params = [nombre]
+        if exclude_id:
+            q += " AND idModalidadCarreraInstitucion<>%s"
+            params.append(exclude_id)
+        cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/career-modalities', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_modalities_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        try:
+            if include_inactive:
+                cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad, fechaFin FROM modalidadcarrerainstitucion ORDER BY nombreModalidad")
+            else:
+                cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad, fechaFin FROM modalidadcarrerainstitucion WHERE fechaFin IS NULL ORDER BY nombreModalidad")
+        except mysql.connector.Error:
+            # Sin fechaFin
+            cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad FROM modalidadcarrerainstitucion ORDER BY nombreModalidad")
+        rows = cur.fetchall() or []
+        return jsonify({'careerModalities': rows}), 200
+    except Exception as e:
+        log(f"US039 list modalidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar modalidades.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-modalities', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_modality_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreModalidad') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _modalidad_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 400
+        # Insert (ignorar fechaFin si no existe)
+        try:
+            cur.execute("INSERT INTO modalidadcarrerainstitucion (nombreModalidad, fechaFin) VALUES (%s, NULL)", (nombre,))
+        except mysql.connector.Error:
+            cur.execute("INSERT INTO modalidadcarrerainstitucion (nombreModalidad) VALUES (%s)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idModalidadCarreraInstitucion': new_id}), 201
+    except Exception as e:
+        log(f"US039 create modalidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_modality_detail(current_user_id, id_mod):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        try:
+            cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad, fechaFin FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        except mysql.connector.Error:
+            cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        m = cur.fetchone()
+        if not m:
+            return jsonify({'errorCode':'ERR1','message':'Modalidad no encontrada.'}), 404
+        return jsonify(m), 200
+    except Exception as e:
+        log(f"US039 detail modalidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener modalidad.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_modality_update(current_user_id, id_mod):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreModalidad') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Verificar existencia
+        try:
+            cur.execute("SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        except mysql.connector.Error:
+            cur.execute("SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Modalidad no encontrada.'}), 404
+        if _modalidad_duplicate_active(cur, nombre, exclude_id=id_mod):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 400
+        try:
+            cur.execute("UPDATE modalidadcarrerainstitucion SET nombreModalidad=%s WHERE idModalidadCarreraInstitucion=%s", (nombre, id_mod))
+        except mysql.connector.Error:
+            cur.execute("UPDATE modalidadcarrerainstitucion SET nombreModalidad=%s WHERE idModalidadCarreraInstitucion=%s", (nombre, id_mod))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US039 update modalidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_modality_delete(current_user_id, id_mod):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Verificar existencia
+        cur.execute("SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la modalidad. Intente nuevamente.'}), 404
+        # Intentar baja lógica
+        try:
+            cur.execute("UPDATE modalidadcarrerainstitucion SET fechaFin=NOW() WHERE idModalidadCarreraInstitucion=%s AND fechaFin IS NULL", (id_mod,))
+            if cur.rowcount == 0:
+                # Si no hay fechaFin, borrar físico
+                cur.execute("DELETE FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        except mysql.connector.Error:
+            # Columna fechaFin inexistente -> borrar físico
+            cur.execute("DELETE FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US039 delete modalidad error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la modalidad. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US039 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreModalidad\":\"Virtual\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreModalidad\":\"Híbrida\"}"
+# Baja lógica/física:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}"
+
+
+ # ============================ ABM Aptitud (US040) ============================
+ # Tabla: aptitud (idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja)
+ # Endpoints:
+ #  GET    /api/v1/admin/catalog/aptitudes                  -> listado (activas por defecto; ?includeInactive=1 para todas)
+ #  POST   /api/v1/admin/catalog/aptitudes                  -> alta (nombre obligatorio, descripcion opcional) ERR1 (vacío o duplicado activo)
+ #  GET    /api/v1/admin/catalog/aptitudes/<id>             -> detalle
+ #  PUT    /api/v1/admin/catalog/aptitudes/<id>             -> modificar nombre/descripcion ERR1 (vacío o duplicado)
+ #  DELETE /api/v1/admin/catalog/aptitudes/<id>             -> baja lógica (fechaBaja=NOW()) ERR2 si error/no encontrado
+ # Errores:
+ #  ERR1: "Debe ingresar un nombre para la aptitud." (nombre vacío o duplicado activo)
+ #  ERR2: "No se pudo eliminar la aptitud. Intente nuevamente." (error técnico o inexistente)
+
+def _aptitud_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idAptitud FROM aptitud WHERE nombreAptitud=%s AND fechaBaja IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idAptitud<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/aptitudes', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_aptitudes_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja FROM aptitud ORDER BY nombreAptitud")
+        else:
+            cur.execute("SELECT idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja FROM aptitud WHERE fechaBaja IS NULL ORDER BY nombreAptitud")
+        rows = cur.fetchall() or []
+        return jsonify({'aptitudes': rows}), 200
+    except Exception as e:
+        log(f"US040 list aptitud error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar aptitudes.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/aptitudes', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_aptitud_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreAptitud') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _aptitud_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
+        cur.execute("INSERT INTO aptitud (nombreAptitud, descripcion, fechaAlta, fechaBaja) VALUES (%s,%s,NOW(),NULL)", (nombre, descripcion))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idAptitud': new_id}), 201
+    except Exception as e:
+        log(f"US040 create aptitud error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_aptitud_detail(current_user_id, id_aptitud):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
+        r = cur.fetchone()
+        if not r:
+            return jsonify({'errorCode':'ERR1','message':'Aptitud no encontrada.'}), 404
+        return jsonify(r), 200
+    except Exception as e:
+        log(f"US040 detail aptitud error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener aptitud.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_aptitud_update(current_user_id, id_aptitud):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreAptitud') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip() or None
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idAptitud FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Aptitud no encontrada.'}), 404
+        if _aptitud_duplicate_active(cur, nombre, exclude_id=id_aptitud):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
+        cur.execute("UPDATE aptitud SET nombreAptitud=%s, descripcion=%s WHERE idAptitud=%s", (nombre, descripcion, id_aptitud))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US040 update aptitud error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_aptitud_delete(current_user_id, id_aptitud):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idAptitud FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la aptitud. Intente nuevamente.'}), 404
+        cur.execute("UPDATE aptitud SET fechaBaja=NOW() WHERE idAptitud=%s AND fechaBaja IS NULL", (id_aptitud,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US040 delete aptitud error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la aptitud. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US040 (token Hola):
+# Listar activas:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}"
+# Listar todas:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreAptitud\":\"Liderazgo\",\"descripcion\":\"Capacidad de guiar equipos\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreAptitud\":\"Comunicación\",\"descripcion\":\"Habilidad para transmitir ideas\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}"
+
+ # ============================ ABM EstadoAcceso (US041) ============================
+ # Tabla: estadoacceso (idEstadoAcceso, nombreEstadoAcceso, fechaFin)
+ # Endpoints:
+ #  GET    /api/v1/admin/catalog/access-statuses                  -> listado (activos por defecto; ?includeInactive=1 para todos)
+ #  POST   /api/v1/admin/catalog/access-statuses                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
+ #  GET    /api/v1/admin/catalog/access-statuses/<id>             -> detalle
+ #  PUT    /api/v1/admin/catalog/access-statuses/<id>             -> modificar nombre ERR1 (vacío o duplicado)
+ #  DELETE /api/v1/admin/catalog/access-statuses/<id>             -> baja lógica (fechaFin=NOW()) ERR2 si error/no encontrado
+ # Errores:
+ #  ERR1: "Debe ingresar un nombre para el estado." (nombre vacío o duplicado activo)
+ #  ERR2: "No se pudo eliminar el estado de acceso. Intente nuevamente." (error técnico o inexistente)
+
+def _estado_acceso_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idEstadoAcceso FROM estadoacceso WHERE nombreEstadoAcceso=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idEstadoAcceso<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/access-statuses', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_access_statuses_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idEstadoAcceso, nombreEstadoAcceso, fechaFin FROM estadoacceso ORDER BY nombreEstadoAcceso")
+        else:
+            cur.execute("SELECT idEstadoAcceso, nombreEstadoAcceso, fechaFin FROM estadoacceso WHERE fechaFin IS NULL ORDER BY nombreEstadoAcceso")
+        estados = cur.fetchall() or []
+        return jsonify({'accessStatuses': estados}), 200
+    except Exception as e:
+        log(f"US041 list estadoacceso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar estados de acceso.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/access-statuses', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_access_status_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoAcceso') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _estado_acceso_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+        cur.execute("INSERT INTO estadoacceso (nombreEstadoAcceso, fechaFin) VALUES (%s, NULL)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idEstadoAcceso': new_id}), 201
+    except Exception as e:
+        log(f"US041 create estadoacceso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_access_status_detail(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idEstadoAcceso, nombreEstadoAcceso, fechaFin FROM estadoacceso WHERE idEstadoAcceso=%s", (id_estado,))
+        est = cur.fetchone()
+        if not est:
+            return jsonify({'errorCode':'ERR1','message':'Estado de acceso no encontrado.'}), 404
+        return jsonify(est), 200
+    except Exception as e:
+        log(f"US041 detail estadoacceso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener estado de acceso.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_access_status_update(current_user_id, id_estado):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoAcceso') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoAcceso FROM estadoacceso WHERE idEstadoAcceso=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Estado de acceso no encontrado.'}), 404
+        if _estado_acceso_duplicate_active(cur, nombre, exclude_id=id_estado):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+        cur.execute("UPDATE estadoacceso SET nombreEstadoAcceso=%s WHERE idEstadoAcceso=%s", (nombre, id_estado))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US041 update estadoacceso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_access_status_delete(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoAcceso FROM estadoacceso WHERE idEstadoAcceso=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de acceso. Intente nuevamente.'}), 404
+        cur.execute("UPDATE estadoacceso SET fechaFin=NOW() WHERE idEstadoAcceso=%s AND fechaFin IS NULL", (id_estado,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US041 delete estadoacceso error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de acceso. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US041 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoAcceso\":\"Bloqueado\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoAcceso\":\"Suspenso Temporal\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}"
+
+
+### ============================ ABM TipoAcción (US042) ============================
+# Tabla: tipoaccion (idTipoAccion, nombreTipoAccion)  -- Nota: no posee fechaFin actualmente.
+# La HU pide baja lógica: se intenta UPDATE fechaFin=NOW(); si falla (sin columna) se hace DELETE físico.
+# Endpoints:
+#  GET    /api/v1/admin/catalog/action-types
+#  POST   /api/v1/admin/catalog/action-types
+#  GET    /api/v1/admin/catalog/action-types/<id>
+#  PUT    /api/v1/admin/catalog/action-types/<id>
+#  DELETE /api/v1/admin/catalog/action-types/<id>
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el tipo de acción." (vacío o duplicado)
+#   ERR2: "No se pudo eliminar el tipo de acción. Intente nuevamente." (error o no existe)
+
+def _tipo_accion_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idTipoAccion FROM tipoaccion WHERE nombreTipoAccion=%s"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idTipoAccion<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/action-types', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_action_types_list(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idTipoAccion, nombreTipoAccion FROM tipoaccion ORDER BY nombreTipoAccion")
+        rows = cur.fetchall() or []
+        return jsonify({'actionTypes': rows}), 200
+    except Exception as e:
+        log(f"US042 list tipoaccion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al listar tipos de acción.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/action-types', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_action_type_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoAccion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _tipo_accion_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 400
+        cur.execute("INSERT INTO tipoaccion (nombreTipoAccion) VALUES (%s)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idTipoAccion': new_id}), 201
+    except Exception as e:
+        log(f"US042 create tipoaccion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_action_type_detail(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idTipoAccion, nombreTipoAccion FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Tipo de acción no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US042 detail tipoaccion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener tipo de acción.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_action_type_update(current_user_id, id_tipo):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreTipoAccion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoAccion FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Tipo de acción no encontrado.'}), 404
+        if _tipo_accion_duplicate_active(cur, nombre, exclude_id=id_tipo):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 400
+        cur.execute("UPDATE tipoaccion SET nombreTipoAccion=%s WHERE idTipoAccion=%s", (nombre, id_tipo))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US042 update tipoaccion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_action_type_delete(current_user_id, id_tipo):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idTipoAccion FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de acción. Intente nuevamente.'}), 404
+        try:
+            cur.execute("UPDATE tipoaccion SET fechaFin=NOW() WHERE idTipoAccion=%s AND fechaFin IS NULL", (id_tipo,))
+            if cur.rowcount == 0:
+                cur.execute("DELETE FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
+        except mysql.connector.Error:
+            cur.execute("DELETE FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US042 delete tipoaccion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de acción. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US042 (token Hola):
+# Listar:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/action-types" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/action-types" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoAccion\":\"MODIFICACION\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoAccion\":\"ACTUALIZACION\"}"}
+# Baja:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}"
+
+
+### ============================ ABM EstadoInstitución (US043) ============================
+# Tabla: estadoinstitucion (idEstadoInstitucion, nombreEstadoInstitucion, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/institution-states                -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  POST   /api/v1/admin/catalog/institution-states                -> alta (nombreEstadoInstitucion) ERR1 si vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/institution-states/<id>           -> detalle
+#  PUT    /api/v1/admin/catalog/institution-states/<id>           -> modificar nombre (ERR1 si vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/institution-states/<id>           -> baja lógica (fechaFin=NOW()) ERR2 si falla o no existe
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el estado de la institución." (nombre vacío o duplicado activo)
+#   ERR2: "No se pudo eliminar el estado de institución. Intente nuevamente." (error técnico o inexistente)
+
+def _estado_institucion_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idEstadoInstitucion<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/institution-states', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_states_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion ORDER BY nombreEstadoInstitucion")
+        else:
+            cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion WHERE fechaFin IS NULL ORDER BY nombreEstadoInstitucion")
+        rows = cur.fetchall() or []
+        return jsonify({'institutionStates': rows}), 200
+    except Exception as e:
+        log(f"US043 list estadoinstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar estados de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-states', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_state_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _estado_institucion_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
+        cur.execute("INSERT INTO estadoinstitucion (nombreEstadoInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idEstadoInstitucion': new_id}), 201
+    except Exception as e:
+        log(f"US043 create estadoinstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_state_detail(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion WHERE idEstadoInstitucion=%s", (id_estado,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Estado de institución no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US043 detail estadoinstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener estado de institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_state_update(current_user_id, id_estado):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoInstitucion FROM estadoinstitucion WHERE idEstadoInstitucion=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Estado de institución no encontrado.'}), 404
+        if _estado_institucion_duplicate_active(cur, nombre, exclude_id=id_estado):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
+        cur.execute("UPDATE estadoinstitucion SET nombreEstadoInstitucion=%s WHERE idEstadoInstitucion=%s", (nombre, id_estado))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US043 update estadoinstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_state_delete(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoInstitucion FROM estadoinstitucion WHERE idEstadoInstitucion=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de institución. Intente nuevamente.'}), 404
+        cur.execute("UPDATE estadoinstitucion SET fechaFin=NOW() WHERE idEstadoInstitucion=%s AND fechaFin IS NULL", (id_estado,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US043 delete estadoinstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de institución. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US043 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoInstitucion\":\"Pendiente\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoInstitucion\":\"Aprobada\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}"
+
+
+### ============================ ABM EstadoCarreraInstitución (US044) ============================
+# Tabla: estadocarrerainstitucion (idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/career-institution-statuses                -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  POST   /api/v1/admin/catalog/career-institution-statuses                -> alta (nombreEstadoCarreraInstitucion) ERR1 si vacío o duplicado activo
+#  GET    /api/v1/admin/catalog/career-institution-statuses/<id>           -> detalle
+#  PUT    /api/v1/admin/catalog/career-institution-statuses/<id>           -> modificar nombre (ERR1 si vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/career-institution-statuses/<id>           -> baja lógica (fechaFin=NOW()) ERR2 si falla o no existe
+# Errores:
+#   ERR1: "Debe ingresar un nombre para el estado de carrera." (nombre vacío o duplicado activo)
+#   ERR2: "No se pudo eliminar el estado de carrera. Intente nuevamente." (error técnico o inexistente)
+
+def _estado_carrera_institucion_duplicate_active(cur, nombre, exclude_id=None):
+    q = "SELECT idEstadoCarreraInstitucion FROM estadocarrerainstitucion WHERE nombreEstadoCarreraInstitucion=%s AND fechaFin IS NULL"
+    params = [nombre]
+    if exclude_id:
+        q += " AND idEstadoCarreraInstitucion<>%s"
+        params.append(exclude_id)
+    cur.execute(q, tuple(params))
+    return cur.fetchone() is not None
+
+@app.route('/api/v1/admin/catalog/career-institution-statuses', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_institution_statuses_list(current_user_id):
+    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        if include_inactive:
+            cur.execute("SELECT idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin FROM estadocarrerainstitucion ORDER BY nombreEstadoCarreraInstitucion")
+        else:
+            cur.execute("SELECT idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin FROM estadocarrerainstitucion WHERE fechaFin IS NULL ORDER BY nombreEstadoCarreraInstitucion")
+        rows = cur.fetchall() or []
+        return jsonify({'careerInstitutionStatuses': rows}), 200
+    except Exception as e:
+        log(f"US044 list estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'Error al listar estados de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-institution-statuses', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_institution_status_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoCarreraInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _estado_carrera_institucion_duplicate_active(cur, nombre):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
+        cur.execute("INSERT INTO estadocarrerainstitucion (nombreEstadoCarreraInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
+        new_id = cur.lastrowid
+        conn.commit()
+        return jsonify({'ok':True,'idEstadoCarreraInstitucion': new_id}), 201
+    except Exception as e:
+        log(f"US044 create estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_institution_status_detail(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin FROM estadocarrerainstitucion WHERE idEstadoCarreraInstitucion=%s", (id_estado,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'errorCode':'ERR1','message':'Estado de carrera no encontrado.'}), 404
+        return jsonify(row), 200
+    except Exception as e:
+        log(f"US044 detail estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Error al obtener estado de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_institution_status_update(current_user_id, id_estado):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombreEstadoCarreraInstitucion') or '').strip()
+    if not nombre:
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoCarreraInstitucion FROM estadocarrerainstitucion WHERE idEstadoCarreraInstitucion=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Estado de carrera no encontrado.'}), 404
+        if _estado_carrera_institucion_duplicate_active(cur, nombre, exclude_id=id_estado):
+            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
+        cur.execute("UPDATE estadocarrerainstitucion SET nombreEstadoCarreraInstitucion=%s WHERE idEstadoCarreraInstitucion=%s", (nombre, id_estado))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US044 update estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_career_institution_status_delete(current_user_id, id_estado):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idEstadoCarreraInstitucion FROM estadocarrerainstitucion WHERE idEstadoCarreraInstitucion=%s", (id_estado,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de carrera. Intente nuevamente.'}), 404
+        cur.execute("UPDATE estadocarrerainstitucion SET fechaFin=NOW() WHERE idEstadoCarreraInstitucion=%s AND fechaFin IS NULL", (id_estado,))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US044 delete estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de carrera. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US044 (token Hola):
+# Listar activos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses" -H "Authorization: Bearer {{token}}"
+# Listar todos:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoCarreraInstitucion\":\"Activa\"}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoCarreraInstitucion\":\"Cerrada\"}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses/1" -H "Authorization: Bearer {{token}}"
+
+### ============================ ABM ConfiguraciónBackup (US045) ============================
+# Tabla: configuracionbackup (frecuencia, horaEjecucion TIME, cantidadBackupConservar INT)
+# (No posee id; se maneja como único registro lógico con id=1)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/backup-configs                 -> listado (0 o 1 config)
+#  POST   /api/v1/admin/catalog/backup-configs                 -> alta (reemplaza si existía) ERR1 si campos faltan
+#  GET    /api/v1/admin/catalog/backup-configs/1               -> detalle
+#  PUT    /api/v1/admin/catalog/backup-configs/1               -> modificar (ERR1 validación / no encontrado)
+#  DELETE /api/v1/admin/catalog/backup-configs/1               -> baja (DELETE) ERR2 si error/no existe
+# Errores:
+#   ERR1: "Debe completar todos los campos para guardar la configuración." (faltantes / formato inválido / no encontrada en detail/update)
+#   ERR2: "No se pudo eliminar la configuración. Intente nuevamente." (error técnico o no encontrada en delete)
+
+VALID_FREQUENCIAS_BACKUP_US045 = {'diaria','semanal','mensual'}
+
+def _get_backup_config(cur):
+    cur.execute("SELECT frecuencia, TIME_FORMAT(horaEjecucion,'%H:%i') AS horaEjecucion, cantidadBackupConservar FROM configuracionbackup LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        return None
+    return { 'id':1, 'frecuencia': row[0], 'horaEjecucion': row[1], 'cantidadBackupConservar': row[2] }
+
+def _validate_backup_payload(data):
+    freq = (data.get('frecuencia') or '').strip().lower()
+    hora = (data.get('horaEjecucion') or '').strip()
+    cant = data.get('cantidadBackupConservar')
+    try:
+        if freq not in VALID_FREQUENCIAS_BACKUP_US045:
+            raise ValueError('freq')
+        datetime.datetime.strptime(hora, '%H:%M')
+        cant_int = int(cant)
+        if cant_int <= 0: raise ValueError('cant')
+        return freq, hora, cant_int
+    except Exception:
+        return None
+
+@app.route('/api/v1/admin/catalog/backup-configs', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_backup_configs_list(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cfg = _get_backup_config(cur)
+        return jsonify({'backupConfigs': [cfg] if cfg else []}), 200
+    except Exception as e:
+        log(f"US045 list configuracionbackup error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos para guardar la configuración.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/backup-configs', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_backup_config_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    parsed = _validate_backup_payload(data)
+    if not parsed:
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos para guardar la configuración.'}), 400
+    freq, hora, cant = parsed
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM configuracionbackup")
+        cur.execute("INSERT INTO configuracionbackup (frecuencia, horaEjecucion, cantidadBackupConservar) VALUES (%s,%s,%s)", (freq, hora+':00', cant))
+        conn.commit()
+        return jsonify({'ok':True,'id':1}), 201
+    except Exception as e:
+        log(f"US045 create configuracionbackup error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos para guardar la configuración.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/backup-configs/1', methods=['GET'])
+@requires_permission('ADMIN_PANEL')
+def admin_backup_config_detail(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cfg = _get_backup_config(cur)
+        if not cfg:
+            return jsonify({'errorCode':'ERR1','message':'Configuración no encontrada.'}), 404
+        return jsonify(cfg), 200
+    except Exception as e:
+        log(f"US045 detail configuracionbackup error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Configuración no encontrada.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/backup-configs/1', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_backup_config_update(current_user_id):
+    data = request.get_json(silent=True) or {}
+    parsed = _validate_backup_payload(data)
+    if not parsed:
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos para guardar la configuración.'}), 400
+    freq, hora, cant = parsed
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM configuracionbackup LIMIT 1")
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'Configuración no encontrada.'}), 404
+        cur.execute("DELETE FROM configuracionbackup")
+        cur.execute("INSERT INTO configuracionbackup (frecuencia, horaEjecucion, cantidadBackupConservar) VALUES (%s,%s,%s)", (freq, hora+':00', cant))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US045 update configuracionbackup error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos para guardar la configuración.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/backup-configs/1', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_backup_config_delete(current_user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM configuracionbackup LIMIT 1")
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la configuración. Intente nuevamente.'}), 404
+        cur.execute("DELETE FROM configuracionbackup")
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US045 delete configuracionbackup error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la configuración. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US045 (token Hola):
+# Listar:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/backup-configs" -H "Authorization: Bearer {{token}}"
+# Crear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/backup-configs" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"frecuencia\":\"diaria\",\"horaEjecucion\":\"02:30\",\"cantidadBackupConservar\":5}"
+# Detalle:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}"
+# Actualizar:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"frecuencia\":\"semanal\",\"horaEjecucion\":\"03:00\",\"cantidadBackupConservar\":8}"
+# Baja:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}"
+
+### ============================ Gestión de usuarios (US046) ============================
+# Objetivo: Alta, bloqueo/desbloqueo y baja lógica de usuarios.
+# Tablas involucradas: usuario (idUsuario, nombre, apellido, mail, contrasena, fechaNac, etc.),
+#                      estadousuario (idEstadoUsuario, nombreEstadoUsuario, fechaFin),
+#                      usuarioestado (idUsuarioEstado, idUsuario, idEstadoUsuario, fechaInicio, fechaFin)
+# Estados lógicos asumidos (existentes en dump): 1=Activo, 2=Suspendido (lo usaremos como Bloqueado), 3=Baja (lo usaremos para baja lógica definitiva)
+# Endpoints:
+#  POST   /api/v1/admin/catalog/users                     -> Crear usuario (nombre, apellido, email, grupoId opcional, estadoInicial=activo|inactivo[bloqueado])
+#  POST   /api/v1/admin/catalog/users/<id>/block          -> Bloquear usuario (pasa a estado 2) ERR3 en error
+#  POST   /api/v1/admin/catalog/users/<id>/unblock        -> Desbloquear usuario (pasa a estado 1) ERR3 en error
+#  DELETE /api/v1/admin/catalog/users/<id>                -> Baja lógica usuario (estado 3 y opcional fechaFin) ERR4 en error
+# Errores:
+#  ERR1: "Debe completar todos los campos obligatorios." (nombre, apellido, email)
+#  ERR2: "Debe ingresar un correo electrónico válido." (formato email)
+#  ERR3: "No se pudo cambiar el estado del usuario. Intente nuevamente." (bloqueo/desbloqueo)
+#  ERR4: "No se pudo eliminar el usuario. Intente nuevamente." (baja lógica)
+# Notas:
+#  - Email debe ser único. Si ya existe -> ERR2 (reutilizamos mensaje de formato inválido según HU; podríamos ampliar, pero seguimos directiva)
+#  - Si estadoInicial='inactivo' se crea en estado Suspendido (2). Por defecto Activo (1).
+#  - Para registrar estado se inserta en usuarioestado fila con fechaInicio NOW() y fechaFin NULL. Al cambiar de estado se cierra la fila previa y se abre una nueva.
+
+EMAIL_REGEX_ADMIN = EMAIL_REGEX  # reutiliza regex global
+
+def _user_email_exists(cur, email):
+    cur.execute("SELECT idUsuario FROM usuario WHERE mail=%s", (email,))
+    return cur.fetchone() is not None
+
+def _insert_user_state(cur, user_id, id_estado_nuevo):
+    # Cerrar estado previo
+    cur.execute("UPDATE usuarioestado SET fechaFin=NOW() WHERE idUsuario=%s AND fechaFin IS NULL", (user_id,))
+    # Abrir nuevo
+    cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (user_id, id_estado_nuevo))
+
+def _determine_initial_state(value:str):
+    v = (value or '').strip().lower()
+    if v == 'inactivo' or v == 'bloqueado':
+        return 2  # Suspendido/Bloqueado
+    return 1  # Activo por defecto
+
+@app.route('/api/v1/admin/catalog/users', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_create(current_user_id):
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombre') or '').strip()
+    apellido = (data.get('apellido') or '').strip()
+    email = (data.get('email') or '').strip()
+    estado_inicial_raw = data.get('estadoInicial')  # activo|inactivo (bloqueado)
+    grupo_id = data.get('grupoId')  # opcional
+    if not nombre or not apellido or not email:
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+    if not re.match(EMAIL_REGEX_ADMIN, email):
+        return jsonify({'errorCode':'ERR2','message':'Debe ingresar un correo electrónico válido.'}), 400
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        if _user_email_exists(cur, email):
+            return jsonify({'errorCode':'ERR2','message':'Debe ingresar un correo electrónico válido.'}), 400
+        # contraseña temporal aleatoria
+        temp_pass = generate_password()
+        hashed = hash_password(temp_pass)
+        cur.execute("INSERT INTO usuario (mail, nombre, apellido, contrasena) VALUES (%s,%s,%s,%s)", (email, nombre, apellido, hashed))
+        new_id = cur.lastrowid
+        # Estado inicial
+        estado_id = _determine_initial_state(estado_inicial_raw)
+        _insert_user_state(cur, new_id, estado_id)
+        # Grupo opcional (usuariogrupo)
+        if grupo_id:
+            try:
+                cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (new_id, int(grupo_id)))
+            except Exception:
+                pass  # si falla grupo no se aborta creación
+        conn.commit()
+        return jsonify({'ok':True,'idUsuario':new_id,'passwordTemporal':temp_pass}), 201
+    except Exception as e:
+        log(f"US046 create user error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+def _change_user_state(user_id:int, target_state:int):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario=%s", (user_id,))
+        if not cur.fetchone():
+            return False, 404
+        _insert_user_state(cur, user_id, target_state)
+        conn.commit()
+        return True, 200
+    except Exception as e:
+        log(f"US046 change state error: {e}\n{traceback.format_exc()}")
+        return False, 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/users/<int:user_id>/block', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_block(current_user_id, user_id):
+    ok, status = _change_user_state(user_id, 2)
+    if not ok:
+        code = 'ERR3'
+        msg = 'No se pudo cambiar el estado del usuario. Intente nuevamente.'
+        if status == 404:
+            return jsonify({'errorCode':code,'message':msg}), 404
+        return jsonify({'errorCode':code,'message':msg}), 500
+    return jsonify({'ok':True}), 200
+
+@app.route('/api/v1/admin/catalog/users/<int:user_id>/unblock', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_unblock(current_user_id, user_id):
+    ok, status = _change_user_state(user_id, 1)
+    if not ok:
+        code = 'ERR3'
+        msg = 'No se pudo cambiar el estado del usuario. Intente nuevamente.'
+        if status == 404:
+            return jsonify({'errorCode':code,'message':msg}), 404
+        return jsonify({'errorCode':code,'message':msg}), 500
+    return jsonify({'ok':True}), 200
+
+@app.route('/api/v1/admin/catalog/users/<int:user_id>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_delete(current_user_id, user_id):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario=%s", (user_id,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR4','message':'No se pudo eliminar el usuario. Intente nuevamente.'}), 404
+        # Set estado Baja (3)
+        _insert_user_state(cur, user_id, 3)
+        # Opcional: marcar fechaFin o algún flag adicional si existiera columna (no en dump actual)
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US046 delete user error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR4','message':'No se pudo eliminar el usuario. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos US046 (token Hola):
+# Crear usuario activo:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"estadoInicial\":\"activo\"}"
+# Crear usuario bloqueado inicialmente:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Ana\",\"apellido\":\"Lopez\",\"email\":\"ana.lopez@example.com\",\"estadoInicial\":\"inactivo\"}"
+# Bloquear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users/1/block" -H "Authorization: Bearer {{token}}"
+# Desbloquear:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users/1/unblock" -H "Authorization: Bearer {{token}}"
+# Baja lógica:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/users/1" -H "Authorization: Bearer {{token}}"
+
+# ============================= Gestion de permisos de grupo (US047)  ============================
+# Objetivo: Asignar y remover permisos a grupos.
+# Tablas involucradas: permiso (idPermiso, nombrePermiso, descripcion), grupopermiso (idGrupoPermiso, idGrupo, idPermiso, fechaInicio, fechaFin)
+# Endpoints:
+#  POST   /api/v1/admin/catalog/groups/<grupo_id>/permissions/<perm_id>    -> Asignar permiso a grupo (fechaInicio=NOW(), fechaFin=NULL) ERR1 si ya tiene o error
+#  DELETE /api/v1/admin/catalog/groups/<grupo_id>/permissions/<perm_id>  -> Remover permiso de grupo (fechaFin=NOW()) ERR2 si no tiene o error
+# Errores:
+#  ERR1: El grupo ya tiene asignado el permiso.
+#  ERR2: El grupo no tiene asignado el permiso.
+@app.route('/api/v1/admin/catalog/groups/<int:grupo_id>/permissions/<int:perm_id>', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_permission_add(current_user_id, grupo_id, perm_id):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Verificar si el grupo ya tiene el permiso
+        cur.execute("SELECT * FROM grupopermiso WHERE idGrupo=%s AND idPermiso=%s AND fechaFin IS NULL", (grupo_id, perm_id))
+        if cur.fetchone():
+            return jsonify({'errorCode':'ERR1','message':'El grupo ya tiene asignado el permiso.'}), 400
+        # Asignar permiso al grupo
+        cur.execute("INSERT INTO grupopermiso (idGrupo, idPermiso, fechaInicio) VALUES (%s, %s, NOW())", (grupo_id, perm_id))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US047 add group permission error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo asignar el permiso al grupo. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+@app.route('/api/v1/admin/catalog/groups/<int:grupo_id>/permissions/<int:perm_id>', methods=['DELETE'])
+@requires_permission('ADMIN_PANEL')
+def admin_group_permission_remove(current_user_id, grupo_id, perm_id):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Verificar si el grupo tiene el permiso
+        cur.execute("SELECT * FROM grupopermiso WHERE idGrupo=%s AND idPermiso=%s AND fechaFin IS NULL", (grupo_id, perm_id))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'El grupo no tiene asignado el permiso.'}), 400
+        # Remover permiso del grupo
+        cur.execute("UPDATE grupopermiso SET fechaFin=NOW() WHERE idGrupo=%s AND idPermiso=%s AND fechaFin IS NULL", (grupo_id, perm_id))
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US047 remove group permission error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo remover el permiso del grupo. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# cURL ejemplos
+# Asignar permiso a grupo:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/groups/1/permissions/2" -H "Authorization: Bearer {{token}}"
+# Remover permiso de grupo:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/groups/1/permissions/2" -H "Authorization: Bearer {{token}}"
 
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+
+
