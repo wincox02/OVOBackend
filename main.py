@@ -30,7 +30,782 @@ DB_CONFIG = {
     "database": "ovo"
 }
 
+BASE_URL = os.getenv('BASE_URL', 'http://ovotest.mooo.com:5000')
+
 SECRET_KEY = "ghwgdgHHYushHg1231SDAAa"
+
+def init_db():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cor = conn.cursor()
+    cor.execute("""
+    -- --------------------------------------------------------
+    -- Host:                         ovotest.mooo.com
+    -- Versión del servidor:         10.11.13-MariaDB-0ubuntu0.24.04.1 - Ubuntu 24.04
+    -- SO del servidor:              debian-linux-gnu
+    -- HeidiSQL Versión:             12.6.0.6765
+    -- --------------------------------------------------------
+
+    /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+    /*!40101 SET NAMES utf8 */;
+    /*!50503 SET NAMES utf8mb4 */;
+    /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+    /*!40103 SET TIME_ZONE='+00:00' */;
+    /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+    /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+    /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+
+    -- Volcando estructura de base de datos para ovo
+    CREATE DATABASE IF NOT EXISTS `ovo` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
+    USE `ovo`;
+
+    -- Volcando estructura para tabla ovo.aptitud
+    CREATE TABLE IF NOT EXISTS `aptitud` (
+    `idAptitud` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreAptitud` varchar(50) DEFAULT NULL,
+    `descripcion` varchar(50) DEFAULT NULL,
+    `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaBaja` datetime DEFAULT NULL,
+    PRIMARY KEY (`idAptitud`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.aptitud: ~1 rows (aproximadamente)
+    INSERT INTO `aptitud` (`idAptitud`, `nombreAptitud`, `descripcion`, `fechaAlta`, `fechaBaja`) VALUES
+        (1, 'Comunicación', 'Habilidad para transmitir ideas', '2025-09-09 14:36:35', '2025-09-09 14:37:08');
+
+    -- Volcando estructura para tabla ovo.aptitudcarrera
+    CREATE TABLE IF NOT EXISTS `aptitudcarrera` (
+    `idAptitudCarrera` int(11) NOT NULL AUTO_INCREMENT,
+    `afinidadCarrera` double DEFAULT NULL,
+    `idAptitud` int(11) DEFAULT NULL,
+    `idCarreraInstitucion` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idAptitudCarrera`),
+    KEY `FK_aptitudcarrera_aptitud` (`idAptitud`),
+    KEY `FK_aptitudcarrera_carrera` (`idCarreraInstitucion`),
+    CONSTRAINT `FK_aptitudcarrera_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_aptitudcarrera_carrera` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrera` (`idCarrera`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.aptitudcarrera: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.backup
+    CREATE TABLE IF NOT EXISTS `backup` (
+    `fechaBackup` datetime DEFAULT NULL,
+    `directorio` varchar(50) DEFAULT NULL,
+    `tamano` double DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.backup: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.carrera
+    CREATE TABLE IF NOT EXISTS `carrera` (
+    `idCarrera` int(11) NOT NULL AUTO_INCREMENT,
+    `fechaFin` datetime DEFAULT NULL,
+    `nombreCarrera` varchar(50) DEFAULT NULL,
+    `idTipoCarrera` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idCarrera`),
+    KEY `FK_carrera_tipocarrera` (`idTipoCarrera`),
+    CONSTRAINT `FK_carrera_tipocarrera` FOREIGN KEY (`idTipoCarrera`) REFERENCES `tipocarrera` (`idTipoCarrera`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.carrera: ~1 rows (aproximadamente)
+    INSERT INTO `carrera` (`idCarrera`, `fechaFin`, `nombreCarrera`, `idTipoCarrera`) VALUES
+        (1, '2028-09-09 14:19:45', 'Ing. X Modificada', 1);
+
+    -- Volcando estructura para tabla ovo.carrerainstitucion
+    CREATE TABLE IF NOT EXISTS `carrerainstitucion` (
+    `idCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `cantidadMaterias` int(11) NOT NULL,
+    `duracionCarrera` decimal(20,2) NOT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `horasCursado` int(11) NOT NULL,
+    `observaciones` varchar(500) NOT NULL,
+    `nombreCarrera` varchar(50) NOT NULL,
+    `tituloCarrera` varchar(50) NOT NULL,
+    `montoCuota` decimal(20,2) NOT NULL,
+    `idEstadoCarreraInstitucion` int(11) NOT NULL,
+    `idCarrera` int(11) NOT NULL,
+    `idModalidadCarreraInstitucion` int(11) NOT NULL,
+    `idInstitucion` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idCarreraInstitucion`),
+    KEY `FK_carrerainstitucion_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
+    KEY `FK_carrerainstitucion_carrera` (`idCarrera`),
+    KEY `FK_carrerainstitucion_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
+    KEY `FK_carrerainstitucion_institucion` (`idInstitucion`),
+    CONSTRAINT `FK_carrerainstitucion_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_carrerainstitucion_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_carrerainstitucion_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_carrerainstitucion_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.carrerainstitucion: ~1 rows (aproximadamente)
+    INSERT INTO `carrerainstitucion` (`idCarreraInstitucion`, `cantidadMaterias`, `duracionCarrera`, `fechaFin`, `fechaInicio`, `horasCursado`, `observaciones`, `nombreCarrera`, `tituloCarrera`, `montoCuota`, `idEstadoCarreraInstitucion`, `idCarrera`, `idModalidadCarreraInstitucion`, `idInstitucion`) VALUES
+        (1, 123, 123.00, NULL, '2025-09-14 22:05:14', 123, '123', '123', '123', 123.00, 1, 1, 3, NULL);
+
+    -- Volcando estructura para tabla ovo.configuracionbackup
+    CREATE TABLE IF NOT EXISTS `configuracionbackup` (
+    `frecuencia` varchar(50) DEFAULT NULL,
+    `horaEjecucion` time DEFAULT NULL,
+    `cantidadBackupConservar` int(11) DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.configuracionbackup: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.contenidomultimedia
+    CREATE TABLE IF NOT EXISTS `contenidomultimedia` (
+    `idContenidoMultimedia` int(11) NOT NULL AUTO_INCREMENT,
+    `enlace` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `titulo` varchar(50) DEFAULT NULL,
+    `descripcion` varchar(50) DEFAULT NULL,
+    `idCarreraInstitucion` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idContenidoMultimedia`),
+    KEY `FK_contenidomultimedia_carrerainstitucion` (`idCarreraInstitucion`),
+    CONSTRAINT `FK_contenidomultimedia_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.contenidomultimedia: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.estadoacceso
+    CREATE TABLE IF NOT EXISTS `estadoacceso` (
+    `idEstadoAcceso` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreEstadoAcceso` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idEstadoAcceso`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.estadoacceso: ~4 rows (aproximadamente)
+    INSERT INTO `estadoacceso` (`idEstadoAcceso`, `nombreEstadoAcceso`, `fechaFin`) VALUES
+        (1, 'Exitoso', NULL),
+        (2, 'Fallido', NULL),
+        (3, 'Fallido Google', NULL),
+        (4, 'Bloqueado', NULL);
+
+    -- Volcando estructura para tabla ovo.estadocarrerainstitucion
+    CREATE TABLE IF NOT EXISTS `estadocarrerainstitucion` (
+    `idEstadoCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreEstadoCarreraInstitucion` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idEstadoCarreraInstitucion`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.estadocarrerainstitucion: ~3 rows (aproximadamente)
+    INSERT INTO `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`, `nombreEstadoCarreraInstitucion`, `fechaFin`) VALUES
+        (1, 'Activa', '2025-09-09 14:58:45'),
+        (2, 'Inactiva', NULL),
+        (3, 'Cerrada', NULL);
+
+    -- Volcando estructura para tabla ovo.estadoinstitucion
+    CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
+    `idEstadoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idEstadoInstitucion`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.estadoinstitucion: ~1 rows (aproximadamente)
+    INSERT INTO `estadoinstitucion` (`idEstadoInstitucion`, `nombreEstadoInstitucion`, `fechaFin`) VALUES
+        (1, 'Aprobada', '2025-09-09 14:57:02');
+
+    -- Volcando estructura para tabla ovo.estadousuario
+    CREATE TABLE IF NOT EXISTS `estadousuario` (
+    `idEstadoUsuario` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreEstadoUsuario` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idEstadoUsuario`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.estadousuario: ~4 rows (aproximadamente)
+    INSERT INTO `estadousuario` (`idEstadoUsuario`, `nombreEstadoUsuario`, `fechaFin`) VALUES
+        (1, 'Activo', NULL),
+        (2, 'Suspendido', NULL),
+        (3, 'Baja', NULL),
+        (4, 'Pendiente', NULL);
+
+    -- Volcando estructura para tabla ovo.genero
+    CREATE TABLE IF NOT EXISTS `genero` (
+    `idGenero` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreGenero` varchar(50) NOT NULL,
+    PRIMARY KEY (`idGenero`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.genero: ~1 rows (aproximadamente)
+    INSERT INTO `genero` (`idGenero`, `nombreGenero`) VALUES
+        (1, 'Masculino'),
+        (2, 'Femenino'),
+        (3, 'Otro');
+
+    -- Volcando estructura para tabla ovo.grupo
+    CREATE TABLE IF NOT EXISTS `grupo` (
+    `idGrupo` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreGrupo` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    `descripcion` varchar(50) DEFAULT NULL,
+    PRIMARY KEY (`idGrupo`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.grupo: ~5 rows (aproximadamente)
+    INSERT INTO `grupo` (`idGrupo`, `nombreGrupo`, `fechaFin`, `descripcion`) VALUES
+        (1, 'Administrador', NULL, 'Todos los permisos'),
+        (2, 'Moderador', NULL, NULL),
+        (3, 'Estudiante', NULL, NULL),
+        (4, 'Institucion', NULL, NULL),
+        (5, 'Supervisores', NULL, 'Grupo de supervisión');
+
+    -- Volcando estructura para tabla ovo.historialabm
+    CREATE TABLE IF NOT EXISTS `historialabm` (
+    `idHistorialABM` int(11) NOT NULL AUTO_INCREMENT,
+    `idUsuario` int(11) NOT NULL,
+    `fechaHistorial` datetime NOT NULL DEFAULT current_timestamp(),
+    `idTipoAccion` int(11) NOT NULL,
+    `idModalidadCarreraInstitucion` int(11) DEFAULT NULL,
+    `idLocalidad` int(11) DEFAULT NULL,
+    `idGrupo` int(11) DEFAULT NULL,
+    `idProvincia` int(11) DEFAULT NULL,
+    `idPermiso` int(11) DEFAULT NULL,
+    `idAptitud` int(11) DEFAULT NULL,
+    `idPermisoGrupo` int(11) DEFAULT NULL,
+    `idCarrera` int(11) DEFAULT NULL,
+    `idEstadoAcceso` int(11) DEFAULT NULL,
+    `idGenero` int(11) DEFAULT NULL,
+    `idEstadoCarreraInstitucion` int(11) DEFAULT NULL,
+    `idEstadoUsuario` int(11) DEFAULT NULL,
+    `idPais` int(11) DEFAULT NULL,
+    `idTipoInstitucion` int(11) DEFAULT NULL,
+    `idTipoCarrera` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idHistorialABM`),
+    KEY `FK_historialabm_tipoaccion` (`idTipoAccion`),
+    KEY `FK_historialabm_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
+    KEY `FK_historialabm_localidad` (`idLocalidad`),
+    KEY `FK_historialabm_grupo` (`idGrupo`),
+    KEY `FK_historialabm_provincia` (`idProvincia`),
+    KEY `FK_historialabm_permiso` (`idPermiso`),
+    KEY `FK_historialabm_usuario` (`idUsuario`),
+    KEY `FK_historialabm_aptitud` (`idAptitud`),
+    KEY `FK_historialabm_permisogrupo` (`idPermisoGrupo`),
+    KEY `FK_historialabm_carrera` (`idCarrera`),
+    KEY `FK_historialabm_estadoacceso` (`idEstadoAcceso`),
+    KEY `FK_historialabm_genero` (`idGenero`),
+    KEY `FK_historialabm_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
+    KEY `FK_historialabm_estadousuario` (`idEstadoUsuario`),
+    KEY `FK_historialabm_pais` (`idPais`),
+    KEY `FK_historialabm_tipoinstitucion` (`idTipoInstitucion`),
+    KEY `FK_historialabm_tipocarrera` (`idTipoCarrera`),
+    CONSTRAINT `FK_historialabm_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_estadoacceso` FOREIGN KEY (`idEstadoAcceso`) REFERENCES `estadoacceso` (`idEstadoAcceso`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_estadousuario` FOREIGN KEY (`idEstadoUsuario`) REFERENCES `estadousuario` (`idEstadoUsuario`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_genero` FOREIGN KEY (`idGenero`) REFERENCES `genero` (`idGenero`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_pais` FOREIGN KEY (`idPais`) REFERENCES `pais` (`idPais`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_permisogrupo` FOREIGN KEY (`idPermisoGrupo`) REFERENCES `permisogrupo` (`idPermisoGrupo`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_provincia` FOREIGN KEY (`idProvincia`) REFERENCES `provincia` (`idProvincia`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_tipoaccion` FOREIGN KEY (`idTipoAccion`) REFERENCES `tipoaccion` (`idTipoAccion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_tipocarrera` FOREIGN KEY (`idTipoCarrera`) REFERENCES `tipocarrera` (`idTipoCarrera`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialabm_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.historialabm: ~1 rows (aproximadamente)
+    INSERT INTO `historialabm` (`idHistorialABM`, `idUsuario`, `fechaHistorial`, `idTipoAccion`, `idModalidadCarreraInstitucion`, `idLocalidad`, `idGrupo`, `idProvincia`, `idPermiso`, `idAptitud`, `idPermisoGrupo`, `idCarrera`, `idEstadoAcceso`, `idGenero`, `idEstadoCarreraInstitucion`, `idEstadoUsuario`, `idPais`, `idTipoInstitucion`, `idTipoCarrera`) VALUES
+        (1, 1, '2025-08-31 18:31:20', 1, NULL, NULL, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+    -- Volcando estructura para tabla ovo.historialacceso
+    CREATE TABLE IF NOT EXISTS `historialacceso` (
+    `idHistorial` int(11) NOT NULL AUTO_INCREMENT,
+    `fecha` datetime NOT NULL DEFAULT current_timestamp(),
+    `ipAcceso` varchar(50) NOT NULL,
+    `navegador` varchar(1000) NOT NULL,
+    `idEstadoAcceso` int(11) NOT NULL,
+    `idUsuario` int(11) NOT NULL,
+    PRIMARY KEY (`idHistorial`),
+    KEY `FK_historialacceso_estadoacceso` (`idEstadoAcceso`),
+    KEY `FK_historialacceso_usuario` (`idUsuario`),
+    CONSTRAINT `FK_historialacceso_estadoacceso` FOREIGN KEY (`idEstadoAcceso`) REFERENCES `estadoacceso` (`idEstadoAcceso`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_historialacceso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=106 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.historialacceso: ~75 rows (aproximadamente)
+    INSERT INTO `historialacceso` (`idHistorial`, `fecha`, `ipAcceso`, `navegador`, `idEstadoAcceso`, `idUsuario`) VALUES
+        (1, '2025-08-31 18:18:39', '1.1.1.1', 'dasd', 1, 1),
+        (2, '2025-09-09 16:51:43', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+        (3, '2025-09-09 16:51:47', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+        (4, '2025-09-09 16:51:48', '127.0.0.1', 'PostmanRuntime/7.45.0', 1, 1),
+        (5, '2025-09-09 16:52:38', '127.0.0.1', 'PostmanRuntime/7.45.0', 2, 1),
+        (6, '2025-09-14 16:57:41', '127.0.0.1', 'PostmanRuntime/7.46.0', 1, 1),
+        (7, '2025-09-14 16:57:50', '127.0.0.1', 'PostmanRuntime/7.46.0', 1, 1),
+        (8, '2025-09-14 21:38:07', '191.82.213.188', 'PostmanRuntime/7.46.0', 1, 1),
+        (9, '2025-09-14 21:49:46', '191.82.213.188', 'PostmanRuntime/7.46.0', 1, 1),
+        (10, '2025-09-14 21:49:57', '192.168.1.1', 'PostmanRuntime/7.46.0', 1, 1),
+        (11, '2025-09-15 01:02:27', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (12, '2025-09-15 01:02:38', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (13, '2025-09-15 01:03:10', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (14, '2025-09-15 01:03:25', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (15, '2025-09-15 01:03:35', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (16, '2025-09-15 01:03:56', '186.122.0.159', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (17, '2025-09-15 13:43:31', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (18, '2025-09-15 13:49:40', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (19, '2025-09-15 13:51:43', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (20, '2025-09-15 15:44:02', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (21, '2025-09-15 15:44:35', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (22, '2025-09-15 15:47:00', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (23, '2025-09-15 15:49:53', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (24, '2025-09-15 15:50:00', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (25, '2025-09-15 15:50:02', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (26, '2025-09-15 15:50:05', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (27, '2025-09-15 15:51:27', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (28, '2025-09-15 15:51:30', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (29, '2025-09-15 15:56:10', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (30, '2025-09-15 15:56:14', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (31, '2025-09-15 16:00:47', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (32, '2025-09-15 16:01:05', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (33, '2025-09-15 16:01:30', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (34, '2025-09-15 16:02:25', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (35, '2025-09-15 16:09:12', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (36, '2025-09-15 16:09:23', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (37, '2025-09-15 16:16:20', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (38, '2025-09-15 16:17:59', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (39, '2025-09-15 16:20:23', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (40, '2025-09-15 16:23:02', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (41, '2025-09-15 16:23:37', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (42, '2025-09-15 16:23:42', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (43, '2025-09-15 16:25:09', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (44, '2025-09-15 16:57:00', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (45, '2025-09-15 16:57:08', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (46, '2025-09-15 18:14:05', '191.82.10.3', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36', 1, 1),
+        (47, '2025-09-15 18:34:42', '191.82.10.3', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36', 1, 1),
+        (48, '2025-09-15 19:59:04', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (49, '2025-09-15 20:21:47', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (50, '2025-09-15 20:24:26', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (51, '2025-09-15 20:25:43', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (52, '2025-09-15 20:27:56', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (53, '2025-09-15 20:34:39', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (54, '2025-09-15 20:37:12', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (55, '2025-09-15 20:37:18', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (56, '2025-09-15 20:42:23', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (57, '2025-09-15 20:42:24', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (58, '2025-09-15 20:42:25', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (59, '2025-09-15 20:42:27', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (60, '2025-09-15 20:49:10', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (61, '2025-09-15 20:50:39', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (62, '2025-09-15 20:51:58', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (63, '2025-09-15 20:55:13', '190.15.220.52', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (64, '2025-09-16 12:49:33', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (65, '2025-09-16 13:02:48', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 27),
+        (66, '2025-09-16 13:03:00', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (67, '2025-09-16 13:16:06', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (68, '2025-09-16 13:16:14', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (69, '2025-09-16 13:25:54', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (70, '2025-09-16 13:25:59', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (71, '2025-09-16 13:26:08', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (74, '2025-09-16 13:28:18', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 28),
+        (75, '2025-09-16 13:30:13', '190.220.154.44', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (76, '2025-09-16 13:45:24', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (77, '2025-09-16 13:47:06', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (78, '2025-09-16 13:48:23', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (80, '2025-09-16 14:03:35', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (81, '2025-09-16 14:03:40', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (82, '2025-09-16 14:03:56', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (83, '2025-09-16 14:21:32', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (84, '2025-09-16 14:22:20', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (85, '2025-09-16 14:22:57', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (86, '2025-09-16 14:42:12', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 31),
+        (87, '2025-09-16 14:42:26', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (88, '2025-09-16 14:43:38', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 30),
+        (89, '2025-09-16 14:47:25', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (90, '2025-09-16 14:47:27', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (91, '2025-09-16 14:48:10', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (92, '2025-09-16 14:48:11', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (93, '2025-09-16 14:48:39', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (94, '2025-09-16 14:48:47', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 2, 31),
+        (95, '2025-09-16 14:49:04', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 2, 31),
+        (96, '2025-09-16 14:49:06', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 2, 1),
+        (97, '2025-09-16 14:49:10', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (98, '2025-09-16 14:49:14', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (99, '2025-09-16 14:49:27', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (100, '2025-09-16 14:49:28', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (101, '2025-09-16 14:49:36', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (102, '2025-09-16 14:51:55', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (103, '2025-09-16 14:52:29', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1),
+        (104, '2025-09-16 14:52:30', '191.82.213.188', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36', 1, 1),
+        (105, '2025-09-16 14:52:38', '192.168.1.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 OPR/121.0.0.0', 1, 1);
+
+    -- Volcando estructura para tabla ovo.institucion
+    CREATE TABLE IF NOT EXISTS `institucion` (
+    `idInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `anioFundacion` int(11) NOT NULL,
+    `codigoPostal` int(11) NOT NULL,
+    `nombreInstitucion` varchar(50) NOT NULL,
+    `CUIT` int(11) NOT NULL,
+    `direccion` varchar(50) NOT NULL,
+    `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+    `siglaInstitucion` varchar(50) NOT NULL,
+    `telefono` varchar(50) NOT NULL,
+    `mail` varchar(50) NOT NULL,
+    `sitioWeb` varchar(50) NOT NULL,
+    `urlLogo` varchar(50) NOT NULL,
+    `idTipoInstitucion` int(11) NOT NULL,
+    `idLocalidad` int(11) NOT NULL,
+    `idUsuario` int(11) NOT NULL,
+    PRIMARY KEY (`idInstitucion`),
+    KEY `FK_institucion_tipoinstitucion` (`idTipoInstitucion`),
+    KEY `FK_institucion_localidad` (`idLocalidad`),
+    KEY `FK_institucion_usuario` (`idUsuario`),
+    CONSTRAINT `FK_institucion_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_institucion_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_institucion_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.institucion: ~1 rows (aproximadamente)
+    INSERT INTO `institucion` (`idInstitucion`, `anioFundacion`, `codigoPostal`, `nombreInstitucion`, `CUIT`, `direccion`, `fechaAlta`, `siglaInstitucion`, `telefono`, `mail`, `sitioWeb`, `urlLogo`, `idTipoInstitucion`, `idLocalidad`, `idUsuario`) VALUES
+        (1, 2200, 5500, 'UTN', 5456456, 'RAS', '2025-09-14 22:05:31', 'UTN', '123123123', 'adass213casd', 'wwddwwwddw', 'dddwdwdwd', 1, 1, 1);
+
+    -- Volcando estructura para tabla ovo.institucionestado
+    CREATE TABLE IF NOT EXISTS `institucionestado` (
+    `idinstitucionEstado` int(11) NOT NULL AUTO_INCREMENT,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaFin` datetime DEFAULT NULL,
+    `idEstadoInstitucion` int(11) DEFAULT NULL,
+    `idInstitucion` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idinstitucionEstado`),
+    KEY `FK_institucionestado_estadoinstitucion` (`idEstadoInstitucion`),
+    KEY `FK_institucionestado_institucion` (`idInstitucion`),
+    CONSTRAINT `FK_institucionestado_estadoinstitucion` FOREIGN KEY (`idEstadoInstitucion`) REFERENCES `estadoinstitucion` (`idEstadoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_institucionestado_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.institucionestado: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.interesusuariocarrera
+    CREATE TABLE IF NOT EXISTS `interesusuariocarrera` (
+    `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaFin` datetime DEFAULT NULL,
+    `idUsuario` int(11) DEFAULT NULL,
+    `idCarreraInstitucion` int(11) DEFAULT NULL,
+    KEY `FK_interesusuariocarrera_usuario` (`idUsuario`),
+    KEY `FK_interesusuariocarrera_carrerainstitucion` (`idCarreraInstitucion`),
+    CONSTRAINT `FK_interesusuariocarrera_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_interesusuariocarrera_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.interesusuariocarrera: ~2 rows (aproximadamente)
+    INSERT INTO `interesusuariocarrera` (`fechaAlta`, `fechaFin`, `idUsuario`, `idCarreraInstitucion`) VALUES
+        ('2025-09-14 22:07:56', '2025-09-14 22:08:06', 1, 1),
+        ('2025-09-14 22:08:10', '2025-09-14 22:08:16', 1, 1);
+
+    -- Volcando estructura para tabla ovo.localidad
+    CREATE TABLE IF NOT EXISTS `localidad` (
+    `idLocalidad` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreLocalidad` varchar(50) NOT NULL,
+    `idProvincia` int(11) NOT NULL,
+    PRIMARY KEY (`idLocalidad`),
+    KEY `FK_localidad_provincia` (`idProvincia`),
+    CONSTRAINT `FK_localidad_provincia` FOREIGN KEY (`idProvincia`) REFERENCES `provincia` (`idProvincia`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.localidad: ~2 rows (aproximadamente)
+    INSERT INTO `localidad` (`idLocalidad`, `nombreLocalidad`, `idProvincia`) VALUES
+        (1, 'Mendoza', 1),
+        (2, 'Palermo', 2);
+
+    -- Volcando estructura para tabla ovo.modalidadcarrerainstitucion
+    CREATE TABLE IF NOT EXISTS `modalidadcarrerainstitucion` (
+    `idModalidadCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreModalidad` varchar(50) DEFAULT NULL,
+    PRIMARY KEY (`idModalidadCarreraInstitucion`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.modalidadcarrerainstitucion: ~2 rows (aproximadamente)
+    INSERT INTO `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`, `nombreModalidad`) VALUES
+        (2, 'Virtual'),
+        (3, 'Hibrida');
+
+    -- Volcando estructura para tabla ovo.pais
+    CREATE TABLE IF NOT EXISTS `pais` (
+    `idPais` int(11) NOT NULL AUTO_INCREMENT,
+    `nombrePais` varchar(50) DEFAULT NULL,
+    PRIMARY KEY (`idPais`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.pais: ~1 rows (aproximadamente)
+    INSERT INTO `pais` (`idPais`, `nombrePais`) VALUES
+        (1, 'Argentina');
+
+    -- Volcando estructura para tabla ovo.permiso
+    CREATE TABLE IF NOT EXISTS `permiso` (
+    `idPermiso` int(11) NOT NULL AUTO_INCREMENT,
+    `nombrePermiso` varchar(50) DEFAULT NULL,
+    `descripcion` varchar(500) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idPermiso`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.permiso: ~8 rows (aproximadamente)
+    INSERT INTO `permiso` (`idPermiso`, `nombrePermiso`, `descripcion`, `fechaFin`) VALUES
+        (0, 'ADMIN_PANEL', 'TEMP', NULL),
+        (1, 'LIST_USERS', 'Listar todos los usuarios del sistema', NULL),
+        (2, 'LIST_GROUPS', 'Listar todos los grupos activos del sistema', NULL),
+        (3, 'USER_GROUPS', 'Ver/Asignar los grupos de un usuario', NULL),
+        (4, 'USER_PERMS', 'Ver/Asignar los permisos de un usuario', NULL),
+        (5, 'LIST_PERMS', 'Listar todos los permisos del sistema', NULL),
+        (6, 'USER_HISTORY', 'Ver el historial de acceso de un usuario', NULL),
+        (7, 'PEDRO', 'HOLA SOY PEDRO', '2025-09-16 13:52:06');
+
+    -- Volcando estructura para tabla ovo.permisogrupo
+    CREATE TABLE IF NOT EXISTS `permisogrupo` (
+    `idPermisoGrupo` int(11) NOT NULL AUTO_INCREMENT,
+    `idGrupo` int(11) NOT NULL,
+    `idPermiso` int(11) NOT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idPermisoGrupo`),
+    KEY `FK_permisogrupo_grupo` (`idGrupo`),
+    KEY `FK_permisogrupo_permiso` (`idPermiso`),
+    CONSTRAINT `FK_permisogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_permisogrupo_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.permisogrupo: ~7 rows (aproximadamente)
+    INSERT INTO `permisogrupo` (`idPermisoGrupo`, `idGrupo`, `idPermiso`, `fechaInicio`, `fechaFin`) VALUES
+        (0, 1, 0, '2025-09-09 15:48:14', NULL),
+        (1, 1, 1, '2025-08-25 18:55:15', NULL),
+        (2, 1, 2, '2025-09-09 15:48:14', NULL),
+        (3, 1, 3, '2025-09-09 16:07:13', NULL),
+        (4, 1, 4, '2025-09-09 16:14:35', NULL),
+        (5, 1, 5, '2025-09-09 16:57:54', NULL),
+        (6, 1, 6, '2025-09-09 16:58:05', NULL);
+
+    -- Volcando estructura para tabla ovo.preguntafrecuente
+    CREATE TABLE IF NOT EXISTS `preguntafrecuente` (
+    `idPreguntaFrecuente` int(11) NOT NULL AUTO_INCREMENT,
+    `idCarreraInstitucion` int(11) NOT NULL,
+    `fechaFin` datetime NOT NULL,
+    `nombrePregunta` varchar(50) NOT NULL,
+    `respuesta` varchar(50) NOT NULL,
+    PRIMARY KEY (`idPreguntaFrecuente`),
+    KEY `FK_preguntafrecuente_carrerainstitucion` (`idCarreraInstitucion`),
+    CONSTRAINT `FK_preguntafrecuente_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.preguntafrecuente: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.provincia
+    CREATE TABLE IF NOT EXISTS `provincia` (
+    `idProvincia` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreProvincia` varchar(50) NOT NULL,
+    `idPais` int(11) NOT NULL,
+    PRIMARY KEY (`idProvincia`),
+    KEY `FK_provincia_pais` (`idPais`),
+    CONSTRAINT `FK_provincia_pais` FOREIGN KEY (`idPais`) REFERENCES `pais` (`idPais`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.provincia: ~1 rows (aproximadamente)
+    INSERT INTO `provincia` (`idProvincia`, `nombreProvincia`, `idPais`) VALUES
+        (1, 'Mendoza', 1),
+        (2, 'Buenos Aires', 1);
+
+    -- Volcando estructura para tabla ovo.test
+    CREATE TABLE IF NOT EXISTS `test` (
+    `idResultadoCuestionario` int(11) NOT NULL AUTO_INCREMENT,
+    `fechaResultadoCuestionario` datetime DEFAULT NULL,
+    `idUsuario` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idResultadoCuestionario`),
+    KEY `FK_test_usuario` (`idUsuario`),
+    CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.test: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.testaptitud
+    CREATE TABLE IF NOT EXISTS `testaptitud` (
+    `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
+    `afinidadAptitud` double DEFAULT NULL,
+    `idAptitud` int(11) DEFAULT NULL,
+    `idTest` int(11) DEFAULT NULL,
+    PRIMARY KEY (`idResultadoAptitud`),
+    KEY `FK_testaptitud_aptitud` (`idAptitud`),
+    KEY `FK_testaptitud_test` (`idTest`),
+    CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idResultadoCuestionario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.testaptitud: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.testcarrerainstitucion
+    CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
+    `afinidadCarrera` double DEFAULT NULL,
+    `idTest` int(11) DEFAULT NULL,
+    `idCarreraInstitucion` int(11) DEFAULT NULL,
+    KEY `FK_testcarrerainstitucion_test` (`idTest`),
+    KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
+    CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idResultadoCuestionario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.testcarrerainstitucion: ~0 rows (aproximadamente)
+
+    -- Volcando estructura para tabla ovo.tipoaccion
+    CREATE TABLE IF NOT EXISTS `tipoaccion` (
+    `idTipoAccion` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreTipoAccion` varchar(50) DEFAULT NULL,
+    PRIMARY KEY (`idTipoAccion`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.tipoaccion: ~2 rows (aproximadamente)
+    INSERT INTO `tipoaccion` (`idTipoAccion`, `nombreTipoAccion`) VALUES
+        (1, 'ACTUALIZACION'),
+        (2, 'MODIFICACION');
+
+    -- Volcando estructura para tabla ovo.tipocarrera
+    CREATE TABLE IF NOT EXISTS `tipocarrera` (
+    `idTipoCarrera` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreTipoCarrera` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idTipoCarrera`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.tipocarrera: ~10 rows (aproximadamente)
+    INSERT INTO `tipocarrera` (`idTipoCarrera`, `nombreTipoCarrera`, `fechaFin`) VALUES
+        (1, 'Licenciatura', NULL),
+        (2, 'Tecnicatura', NULL),
+        (3, 'Profesorado', NULL),
+        (4, 'Ingenieria', NULL),
+        (5, 'Doctorado', NULL),
+        (6, 'Maestria', NULL),
+        (7, 'Diplomatura', NULL),
+        (8, 'Formacion Profesional', NULL),
+        (9, 'Curso Superior', NULL),
+        (10, 'Certificacion Tecnica', NULL);
+
+    -- Volcando estructura para tabla ovo.tipoinstitucion
+    CREATE TABLE IF NOT EXISTS `tipoinstitucion` (
+    `idTipoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+    `nombreTipoInstitucion` varchar(50) DEFAULT NULL,
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idTipoInstitucion`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.tipoinstitucion: ~4 rows (aproximadamente)
+    INSERT INTO `tipoinstitucion` (`idTipoInstitucion`, `nombreTipoInstitucion`, `fechaFin`) VALUES
+        (1, 'Universitaria', '2025-09-09 14:34:50'),
+        (2, 'Instituto tecnico', NULL),
+        (3, 'Centro de formacion', NULL),
+        (4, 'Universidad Privada', NULL);
+
+    -- Volcando estructura para tabla ovo.usuario
+    CREATE TABLE IF NOT EXISTS `usuario` (
+    `idUsuario` int(11) NOT NULL AUTO_INCREMENT,
+    `mail` varchar(50) NOT NULL,
+    `dni` int(11) NOT NULL,
+    `nombre` varchar(50) NOT NULL,
+    `apellido` varchar(50) NOT NULL,
+    `contrasena` varchar(50) NOT NULL,
+    `fechaNac` date NOT NULL,
+    `validationKEY` varchar(50) DEFAULT NULL,
+    `idGenero` int(11) NOT NULL,
+    `idLocalidad` int(11) NOT NULL,
+    PRIMARY KEY (`idUsuario`),
+    KEY `FK_usuario_genero` (`idGenero`),
+    KEY `FK_usuario_localidad` (`idLocalidad`),
+    CONSTRAINT `FK_usuario_genero` FOREIGN KEY (`idGenero`) REFERENCES `genero` (`idGenero`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_usuario_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.usuario: ~5 rows (aproximadamente)
+    INSERT INTO `usuario` (`idUsuario`, `mail`, `dni`, `nombre`, `apellido`, `contrasena`, `fechaNac`, `validationKEY`, `idGenero`, `idLocalidad`) VALUES
+        (1, 'm1718c@gmail.com', 12345678, 'Matias', 'Calcagno', 'HnSZzlwAdcOCybWVlw7mGwLX5OwjARun2/LnHUpBn2I=', '2000-05-15', NULL, 1, 1),
+        (27, 'institucion@test.com', 12345678, 'Institucion', 'Prueba', 'X1Uxj6lEwmNJ3fOXq06pBeThQrJ1lLQNBF1eAJG2N8Y=', '2006-09-15', NULL, 1, 1),
+        (28, 'estudiante@test.com', 12345678, 'Estudiante', 'Prueba', 'X1Uxj6lEwmNJ3fOXq06pBeThQrJ1lLQNBF1eAJG2N8Y=', '2025-09-16', NULL, 1, 1),
+        (30, 'm1718c2@gmail.com', 12312312, 'asdasd', 'adasdsd', 'EYt9/K3VQqUyPonrekbXn59YCv7S+togGt3EuH2jR6w=', '2002-10-02', '31aee823-2b5b-43f4-9d3b-bd095168d5cc', 1, 2),
+        (31, 'ignaciobufarini@gmail.com', 44662282, 'Ignacio', 'Bufarini', 'OTnWtZ/i2OzkqPJBQRew/o6Q0q40ogDbcHrgS0PL4dw=', '2003-03-06', 'bf739925-985e-43e6-a2ec-b2f3babfc06c', 1, 1);
+
+    -- Volcando estructura para tabla ovo.usuarioestado
+    CREATE TABLE IF NOT EXISTS `usuarioestado` (
+    `idUsuarioEstado` int(11) NOT NULL AUTO_INCREMENT,
+    `fechaFin` datetime DEFAULT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `idEstadoUsuario` int(11) NOT NULL,
+    `idUsuario` int(11) NOT NULL,
+    PRIMARY KEY (`idUsuarioEstado`),
+    KEY `FK_usuarioestado_estadousuario` (`idEstadoUsuario`),
+    KEY `FK_usuarioestado_usuario` (`idUsuario`),
+    CONSTRAINT `FK_usuarioestado_estadousuario` FOREIGN KEY (`idEstadoUsuario`) REFERENCES `estadousuario` (`idEstadoUsuario`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_usuarioestado_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.usuarioestado: ~15 rows (aproximadamente)
+    INSERT INTO `usuarioestado` (`idUsuarioEstado`, `fechaFin`, `fechaInicio`, `idEstadoUsuario`, `idUsuario`) VALUES
+        (7, '2025-09-14 21:45:41', '2025-09-14 16:57:49', 1, 1),
+        (19, '2025-09-14 18:57:17', '2025-09-14 21:55:36', 3, 1),
+        (20, NULL, '2025-09-14 21:56:01', 1, 1),
+        (22, '2025-09-16 13:50:22', '2025-09-16 12:55:30', 1, 27),
+        (23, NULL, '2025-09-16 12:55:34', 1, 28),
+        (24, '2025-09-16 13:50:24', '2025-09-16 13:50:22', 2, 27),
+        (25, '2025-09-16 13:50:24', '2025-09-16 13:50:24', 2, 27),
+        (26, NULL, '2025-09-16 13:50:24', 2, 27),
+        (28, '2025-09-16 14:43:35', '2025-09-16 14:31:53', 4, 30),
+        (30, '2025-09-16 14:42:03', '2025-09-16 14:36:15', 4, 31),
+        (37, '2025-09-16 14:46:31', '2025-09-16 14:42:03', 1, 31),
+        (38, NULL, '2025-09-16 14:43:35', 1, 30),
+        (39, '2025-09-16 14:53:35', '2025-09-16 14:46:31', 3, 31),
+        (40, '2025-09-16 14:53:42', '2025-09-16 14:53:35', 2, 31),
+        (41, NULL, '2025-09-16 14:53:42', 2, 31);
+
+    -- Volcando estructura para tabla ovo.usuariogrupo
+    CREATE TABLE IF NOT EXISTS `usuariogrupo` (
+    `idUsuarioGrupo` int(11) NOT NULL AUTO_INCREMENT,
+    `idUsuario` int(11) NOT NULL,
+    `idGrupo` int(11) NOT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idUsuarioGrupo`),
+    KEY `FK_usuariogrupo_grupo` (`idGrupo`),
+    KEY `FK_usuariogrupo_usuario` (`idUsuario`),
+    CONSTRAINT `FK_usuariogrupo_grupo` FOREIGN KEY (`idGrupo`) REFERENCES `grupo` (`idGrupo`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_usuariogrupo_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.usuariogrupo: ~7 rows (aproximadamente)
+    INSERT INTO `usuariogrupo` (`idUsuarioGrupo`, `idUsuario`, `idGrupo`, `fechaInicio`, `fechaFin`) VALUES
+        (15, 1, 1, '2025-09-14 21:16:24', NULL),
+        (17, 28, 3, '2025-09-12 12:51:28', NULL),
+        (18, 27, 4, '2025-09-16 12:52:03', NULL),
+        (20, 30, 3, '2025-09-16 14:31:53', NULL),
+        (21, 31, 3, '2025-09-16 14:36:15', '2025-09-16 15:02:21'),
+        (24, 31, 3, '2025-09-16 15:02:21', '2025-09-16 15:03:09'),
+        (25, 31, 3, '2025-09-16 15:03:09', '2025-09-16 15:07:59'),
+        (26, 31, 3, '2025-09-16 15:07:59', '2025-09-16 15:08:07'),
+        (27, 31, 3, '2025-09-16 15:08:07', NULL);
+
+    -- Volcando estructura para tabla ovo.usuariopermiso
+    CREATE TABLE IF NOT EXISTS `usuariopermiso` (
+    `idUsuarioPermiso` int(11) NOT NULL AUTO_INCREMENT,
+    `idUsuario` int(11) DEFAULT NULL,
+    `idPermiso` int(11) DEFAULT NULL,
+    `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+    `fechaFin` datetime DEFAULT NULL,
+    PRIMARY KEY (`idUsuarioPermiso`),
+    KEY `FK_usuariopermiso_permiso` (`idPermiso`),
+    KEY `FK_usuariopermiso_usuario` (`idUsuario`),
+    CONSTRAINT `FK_usuariopermiso_permiso` FOREIGN KEY (`idPermiso`) REFERENCES `permiso` (`idPermiso`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `FK_usuariopermiso_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+    -- Volcando datos para la tabla ovo.usuariopermiso: ~0 rows (aproximadamente)
+
+    /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
+    /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
+    /*!40014 SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1) */;
+    /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+    /*!40111 SET SQL_NOTES=IFNULL(@OLD_SQL_NOTES, 1) */;
+
+    """)
 
 def generate_token(user_id):
     payload = {"user_id": user_id, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
@@ -52,8 +827,30 @@ def token_required(f):
             else:
                 data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 current_user = data.get("user_id")
-        except Exception:
-            return jsonify({"errorCode": "AUTH", "message": "Token es inválido"}), 401
+                # Validar que el usuario este activo en la base de datos
+                conn = mysql.connector.connect(**DB_CONFIG)
+                try:
+                    cur = conn.cursor(dictionary=True)
+                    cur.execute("""SELECT eu.nombreEstadoUsuario
+                                    FROM usuarioestado ue
+                                    JOIN estadousuario eu ON eu.idEstadoUsuario = ue.idEstadoUsuario
+                                    WHERE ue.idUsuario = %s
+                                    ORDER BY ue.fechaInicio DESC
+                                    LIMIT 1;""", (current_user,))
+                    result = cur.fetchone()
+                    if result:
+                        estado_usuario = result.get("nombreEstadoUsuario")
+                        if estado_usuario != "Activo":
+                            return jsonify({"errorCode": "AUTH", "message": "Usuario inactivo"}), 401
+                    else:
+                        return jsonify({"errorCode": "AUTH", "message": "Usuario no encontrado"}), 401
+                except Exception as e:
+                    log(f"Error al validar token: {e}")
+                    return jsonify({"errorCode": "AUTH", "message": "Token es inválido"}), 401
+                finally:
+                    conn.close()
+        except jwt.ExpiredSignatureError:
+            return jsonify({"errorCode": "AUTH", "message": "Token ha expirado"}), 401
         return f(current_user, *args, **kwargs)
     return decorated
 
@@ -90,9 +887,9 @@ def log(new_line):
 
 #-----------------------------------SMTP gmail-----------------------------------
 def send_email(to, subject, body):
-    correo = "drifthostingvps@gmail.com"
+    correo = "ovo.app.legal@gmail.com"
     puerto = 465
-    clave = "hwpz gask jgsd ulzj"
+    clave = "qbaw iiov nyoe eahg"
 
     # Crear el objeto mensaje
     msg = MIMEMultipart()
@@ -124,22 +921,6 @@ def send_email(to, subject, body):
     server.login(correo, clave)
     server.sendmail(correo, to, msg.as_string())
     server.quit()
-
-# Endpoint para probar el envío de correos
-@app.route("/api/v1/email", methods=["POST"])
-def send_test_email():
-    try:
-        data = request.json
-        if "to" not in data or "subject" not in data or "mensaje" not in data:
-            raise Exception("Faltan datos obligatorios")
-        #verificar que to sea un correo
-        email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-        if not re.match(email_regex, data["to"]):
-            raise Exception("El correo electrónico no es válido")
-        send_email(data["to"], data["subject"], f"<p>{data['mensaje']}</p>")
-        return jsonify("Correo enviado correctamente"), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # ============================ AUTENTICACIÓN (US001) ============================
 EMAIL_REGEX = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
@@ -249,6 +1030,44 @@ def historial_acceso(user_id: int, estadoAcceso: str, ip: str, user_agent: str):
         except Exception:
             pass
 
+def get_user_last_status(user_id: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Selecciona el estado más reciente del usuario priorizando los activos (fechaFin IS NULL)
+        # Estrategia: ordenar primero por activos y luego por fechaInicio descendente
+        cur.execute(
+            """
+            SELECT ue.idUsuarioEstado, ue.idEstadoUsuario, eu.nombreEstadoUsuario,
+                   ue.fechaInicio, ue.fechaFin
+            FROM usuarioestado ue
+            JOIN estadousuario eu ON eu.idEstadoUsuario = ue.idEstadoUsuario
+            WHERE ue.idUsuario = %s
+            ORDER BY (ue.fechaFin IS NULL) DESC, ue.fechaInicio DESC
+            LIMIT 1
+            """,
+            (user_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "idUsuarioEstado": row.get("idUsuarioEstado"),
+            "idEstadoUsuario": row.get("idEstadoUsuario"),
+            "nombreEstadoUsuario": row.get("nombreEstadoUsuario"),
+            "fechaInicio": row.get("fechaInicio"),
+            "fechaFin": row.get("fechaFin"),
+        }
+    except Exception as e:
+        log(f"get_user_last_status error: {e}\n{traceback.format_exc()}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
 # Endpoint para autenticación con correo y contraseña
 @app.route('/api/v1/auth/login', methods=['POST'])
 def login_email_password():
@@ -273,6 +1092,11 @@ def login_email_password():
         if not verify_password(contrasena, user.get('contrasena') or ''):
             historial_acceso(user['idUsuario'], "Fallido", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR5", "message": "Credenciales inválidas"}), 401
+
+        # Obtener ultimo estado del usuario
+        estado_usuario = get_user_last_status(user['idUsuario'])
+        if estado_usuario and not estado_usuario.get('nombreEstadoUsuario') == 'Activo':
+            return jsonify({"errorCode": "ERR6", "message": "El usuario no está activo, esta: " + estado_usuario.get('nombreEstadoUsuario')}), 403
 
         token = generate_token(user['idUsuario'])
         permisos, grupos = get_user_permissions_and_groups(user['idUsuario'])
@@ -311,7 +1135,7 @@ def login_google():
         id_token = data.get('id_token') or data.get('credential')
         if not id_token:
             historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
-            return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 400
+            return jsonify({"errorCode": "ERR1", "message": "Token de Google es obligatorio"}), 400
 
         request_adapter = google_requests.Request()
         client_id = os.getenv('GOOGLE_CLIENT_ID')
@@ -321,13 +1145,18 @@ def login_google():
         email = claims.get('email')
         if not email:
             historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
-            return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 400
+            return jsonify({"errorCode": "ERR2", "message": "El token de Google no contiene email"}), 400
 
         user = get_user_by_email(email)
         if not user:
-            # No auto-registro por ahora -> credenciales inválidas según criterios
+            # No auto-registro por ahora -> credenciales inválidas
             historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
             return jsonify({"errorCode": "ERR5", "message": "Credenciales inválidas"}), 401
+
+        # Validar estado de usuario igual que en login_email_password
+        estado_usuario = get_user_last_status(user['idUsuario'])
+        if estado_usuario and not estado_usuario.get('nombreEstadoUsuario') == 'Activo':
+            return jsonify({"errorCode": "ERR6", "message": "El usuario no está activo, esta: " + estado_usuario.get('nombreEstadoUsuario')}), 403
 
         token = generate_token(user['idUsuario'])
         permisos, grupos = get_user_permissions_and_groups(user['idUsuario'])
@@ -358,7 +1187,7 @@ def whoami(current_user_id):
         conn = mysql.connector.connect(**DB_CONFIG)
         try:
             cur = conn.cursor(dictionary=True)
-            cur.execute("SELECT idUsuario, mail, apellido, nombre FROM usuario WHERE idUsuario = %s", (current_user_id,))
+            cur.execute("SELECT idUsuario, mail, apellido, nombre, dni, fechaNac, idGenero FROM usuario WHERE idUsuario = %s", (current_user_id,))
             user = cur.fetchone()
         finally:
             conn.close()
@@ -373,6 +1202,9 @@ def whoami(current_user_id):
                 "nombre": user.get('nombre'),
                 "apellido": user.get('apellido'),
                 "mail": user.get('mail'),
+                "dni": user.get('dni'),
+                "fechaNac": user.get('fechaNac').isoformat() if user.get('fechaNac') else None,
+                "idGenero": user.get('idGenero'),
             },
             "permisos": permisos,
             "grupos": grupos,
@@ -398,11 +1230,14 @@ def admin_list_users(current_user_id):
         cur.execute(
             """
             SELECT u.idUsuario, u.nombre, u.apellido, u.mail,
-                   GROUP_CONCAT(g.nombreGrupo ORDER BY g.nombreGrupo SEPARATOR ',') AS grupos
+               GROUP_CONCAT(g.nombreGrupo ORDER BY g.nombreGrupo SEPARATOR ',') AS grupos,
+               eu.nombreEstadoUsuario AS estado
             FROM usuario u
             LEFT JOIN usuariogrupo ug ON ug.idUsuario = u.idUsuario AND (ug.fechaFin IS NULL OR ug.fechaFin > NOW())
             LEFT JOIN grupo g ON g.idGrupo = ug.idGrupo
-            GROUP BY u.idUsuario
+            LEFT JOIN usuarioestado ue ON ue.idUsuario = u.idUsuario AND (ue.fechaFin IS NULL OR ue.fechaFin > NOW())
+            LEFT JOIN estadousuario eu ON eu.idEstadoUsuario = ue.idEstadoUsuario
+            GROUP BY u.idUsuario, eu.nombreEstadoUsuario
             ORDER BY u.apellido, u.nombre
             """
         )
@@ -411,6 +1246,7 @@ def admin_list_users(current_user_id):
             if not s:
                 return []
             return [p for p in (s or '').split(',') if p]
+        estado_usuario = cur.fetchone()
         data = [
             {
                 "id": r['idUsuario'],
@@ -418,6 +1254,7 @@ def admin_list_users(current_user_id):
                 "apellido": r.get('apellido'),
                 "mail": r.get('mail'),
                 "grupos": parse_grupos(r.get('grupos')),
+                "estado": r.get('estado') or 'Desconocido',
             }
             for r in rows
         ]
@@ -510,26 +1347,7 @@ def admin_get_user_permissions(current_user_id, user_id: int):
             (user_id,)
         )
         rows = cur.fetchall() or []
-        # Obtener los permisos de los grupos a los cuales pertenece y no esta vencido
-        cur.execute(
-            """
-            SELECT p.idPermiso, p.nombrePermiso, p.descripcion
-            FROM permiso p
-            JOIN permisogrupo pg ON pg.idPermiso = p.idPermiso
-            WHERE pg.idGrupo IN (
-                SELECT idGrupo
-                FROM usuariogrupo
-                WHERE idUsuario = %s AND (fechaFin IS NULL OR fechaFin > NOW())
-            )
-        """,
-            (user_id,)
-        )
         # Unir permisos pero hay que quitar los repetidos (directos y ademas por grupo)
-        extra_rows = cur.fetchall() or []
-        unique = {}
-        for r in (rows + extra_rows):
-            unique[r['idPermiso']] = r  # sobrescribe duplicados por idPermiso
-        rows = list(unique.values())
         return jsonify(rows), 200
     except Exception as e:
         log(f"/admin/users/{user_id}/permissions GET error: {e}\n{traceback.format_exc()}")
@@ -1108,19 +1926,37 @@ def admin_access_history_export(current_user_id):
                 )
 
                 styles = getSampleStyleSheet()
-                title = Paragraph("Historial de accesos", styles["Heading2"])
+                # Obtener nombre del usuario
+                user_name = ""
+                try:
+                    cur2 = conn.cursor(dictionary=True)
+                    cur2.execute("SELECT nombre, apellido FROM usuario WHERE idUsuario = %s", (user_id_val,))
+                    user_row = cur2.fetchone()
+                    if user_row:
+                        user_name = f"{user_row.get('nombre','')} {user_row.get('apellido','')}".strip()
+                except Exception:
+                    user_name = ""
+                finally:
+                    if 'cur2' in locals():
+                        cur2.close()
+                titulo_texto = f"{user_name} - Export historial de accesos".strip() if user_name else "Export historial de accesos"
+                if not user_name or user_name.lower() in ("anonimo", "anonymous"):
+                    titulo_texto = "Export historial de accesos"
+                # Establecer el título interno del PDF
+                doc.title = titulo_texto
+                title = Paragraph(titulo_texto, styles["Heading2"])
 
                 headers = ["Fecha", "UsuarioId", "Nombre", "Apellido", "IP", "Navegador", "Estado"]
                 data_tbl = [headers]
                 for r in rows:
                     data_tbl.append([
-                        (r.get('fecha').isoformat(sep=' ') if r.get('fecha') else ''),
-                        str(r.get('userId') or ''),
-                        r.get('nombre') or '',
-                        r.get('apellido') or '',
-                        str(r.get('ipAcceso') or ''),
-                        (r.get('navegador') or '')[:60],
-                        r.get('estado') or '',
+                        Paragraph((r.get('fecha').isoformat(sep=' ') if r.get('fecha') else ''), styles["Normal"]),
+                        Paragraph(str(r.get('userId') or ''), styles["Normal"]),
+                        Paragraph(r.get('nombre') or '', styles["Normal"]),
+                        Paragraph(r.get('apellido') or '', styles["Normal"]),
+                        Paragraph(str(r.get('ipAcceso') or ''), styles["Normal"]),
+                        Paragraph(r.get('navegador') or '', styles["Normal"]),
+                        Paragraph(r.get('estado') or '', styles["Normal"]),
                     ])
 
                 # Definir anchos de columnas para una distribución legible en A4
@@ -1153,7 +1989,9 @@ def admin_access_history_export(current_user_id):
 
                 from flask import Response
                 ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"historial_accesos_{ts}.pdf"
+                # Usar el nombre del usuario en el nombre del archivo si está disponible
+                safe_user_name = user_name.replace(' ', '_') if user_name else "anonimo"
+                filename = f"{safe_user_name}_historial_accesos_{ts}.pdf"
                 return Response(
                     pdf,
                     mimetype='application/pdf',
@@ -1574,20 +2412,37 @@ def admin_audit_export(current_user_id):
                 )
 
                 styles = getSampleStyleSheet()
-                title = Paragraph("Auditoría del sistema", styles["Heading2"])
+                # Obtener nombre del usuario
+                user_name = ""
+                try:
+                    cur2 = conn.cursor(dictionary=True)
+                    cur2.execute("SELECT nombre, apellido FROM usuario WHERE idUsuario = %s", (current_user_id,))
+                    user_row = cur2.fetchone()
+                    if user_row:
+                        user_name = f"{user_row.get('nombre','')} {user_row.get('apellido','')}".strip()
+                except Exception:
+                    user_name = ""
+                finally:
+                    if 'cur2' in locals():
+                        cur2.close()
+                titulo_texto = f"{user_name} - Export auditoría".strip() if user_name else "Export auditoría"
+                if not user_name or user_name.lower() in ("anonimo", "anonymous"):
+                    titulo_texto = "Export auditoría"
+                doc.title = titulo_texto
+                title = Paragraph(titulo_texto, styles["Heading2"])
 
                 headers = ["Fecha", "UsuarioId", "Nombre", "Apellido", "TipoAccion", "Modulo", "ClaseId"]
                 data_tbl = [headers]
                 for r in rows:
                     modulo_name, clase_id = pick_modulo(r)
                     data_tbl.append([
-                        (r.get('fechaHistorial').isoformat(sep=' ') if r.get('fechaHistorial') else ''),
-                        str(r.get('idUsuario') or ''),
-                        r.get('nombre') or '',
-                        r.get('apellido') or '',
-                        r.get('nombreTipoAccion') or '',
-                        modulo_name or '',
-                        str(clase_id or ''),
+                        Paragraph((r.get('fechaHistorial').isoformat(sep=' ') if r.get('fechaHistorial') else ''), styles["Normal"]),
+                        Paragraph(str(r.get('idUsuario') or ''), styles["Normal"]),
+                        Paragraph(r.get('nombre') or '', styles["Normal"]),
+                        Paragraph(r.get('apellido') or '', styles["Normal"]),
+                        Paragraph(r.get('nombreTipoAccion') or '', styles["Normal"]),
+                        Paragraph(modulo_name or '', styles["Normal"]),
+                        Paragraph(str(clase_id or ''), styles["Normal"]),
                     ])
 
                 table = Table(
@@ -1619,7 +2474,8 @@ def admin_audit_export(current_user_id):
 
                 from flask import Response
                 ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"auditoria_{ts}.pdf"
+                safe_user_name = user_name.replace(' ', '_') if user_name else "anonimo"
+                filename = f"{safe_user_name}_auditoria_{ts}.pdf"
                 return Response(
                     pdf,
                     mimetype='application/pdf',
@@ -1664,15 +2520,33 @@ def _password_meets_policy(pw: str) -> bool:
 # Endpoint para registro de usuario
 @app.route('/api/v1/auth/register', methods=['POST'])
 def register_email_password():
+    conn = None
     try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
         data = request.get_json(silent=True) or {}
-        nombre = (data.get('nombre') or '').strip()
-        correo = (data.get('correo') or '').strip()
-        contrasena = data.get('contrasena') or ''
-        acepta_politicas = data.get('aceptaPoliticas')
+        correo = data.get('correo')
+        dni = data.get('dni')
+        nombre = data.get('nombre')
+        apellido = data.get('apellido')
+        contrasena = data.get('contrasena')
+        fechaNac = data.get('fechaNac')
+        idGenero = data.get('idGenero')
+        idLocalidad = data.get('idLocalidad')
 
         # ERR1: campos requeridos incompletos
         required_missing = []
+        if not dni:
+            required_missing.append('dni')
+        if not apellido:
+            required_missing.append('apellido')
+        if not fechaNac:
+            required_missing.append('fechaNac')
+        if not idGenero:
+            required_missing.append('idGenero')
+        if not idLocalidad:
+            required_missing.append('idLocalidad')
         if not nombre:
             required_missing.append('nombre')
         if not correo:
@@ -1690,41 +2564,76 @@ def register_email_password():
         if not _password_meets_policy(contrasena):
             return jsonify({"errorCode": "ERR2", "message": PWD_POLICY_MSG}), 400
 
+        # verificar el id de localidad y de genero
+        cur.execute("SELECT * FROM localidad WHERE idLocalidad=%s", (idLocalidad,))
+        localidad = cur.fetchone()
+        cur.execute("SELECT * FROM genero WHERE idGenero=%s", (idGenero,))
+        genero = cur.fetchone()
+
+        if not localidad:
+            return jsonify({"errorCode": "ERR1", "message": "La localidad indicada no existe."}), 400
+        if not genero:
+            return jsonify({"errorCode": "ERR1", "message": "El género indicado no existe."}), 400
+
         # Verificar existencia previa de email
-        conn = mysql.connector.connect(**DB_CONFIG)
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM usuario WHERE mail=%s", (correo,))
-            if cur.fetchone():
-                # No especificado en HU; usamos ERR1 para indicar conflicto de datos
-                return jsonify({"errorCode": "ERR1", "message": "El correo ya está registrado."}), 400
+        cur.execute("SELECT 1 FROM usuario WHERE mail=%s", (correo,))
+        if cur.fetchone():
+            # No especificado en HU; usamos ERR1 para indicar conflicto de datos
+            return jsonify({"errorCode": "ERR1", "message": "El correo ya está registrado."}), 400
 
-            # Insertar usuario
-            hashed = hash_password(contrasena)
-            cur.execute(
-                "INSERT INTO usuario (mail, nombre, contrasena) VALUES (%s, %s, %s)",
-                (correo, nombre, hashed)
-            )
+        validation_key = generate_complex_id()
+
+        # Insertar usuario
+        hashed = hash_password(contrasena)
+        cur.execute(
+            "INSERT INTO usuario (mail, dni, nombre, apellido, contrasena, fechaNac, idGenero, idLocalidad, validationKEY) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (correo, dni, nombre, apellido, hashed, fechaNac, int(idGenero), int(idLocalidad), validation_key)
+        )
+
+        # Obtener id del nuevo usuario
+        cur.execute("SELECT * FROM usuario WHERE mail=%s", (correo,))
+        user = cur.fetchone()
+
+        # Agregar al usuario al grupo de "Estudiante" por defecto
+        if user:
+            cur.execute("SELECT * FROM grupo WHERE nombreGrupo=%s", ("Estudiante",))
+            grupo = cur.fetchone()
+            if not grupo:
+                return jsonify({"errorCode": "ERR3", "message": "Error al registrar usuario"}), 500
+            cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo) VALUES (%s, %s)", (int(user['idUsuario']), int(grupo['idGrupo'])))
+
+        # Agregar al usuario al estado "Pendiente" por defecto
+        if user:
+            cur.execute("SELECT * FROM estadousuario WHERE nombreEstadoUsuario = %s", ("Pendiente",))
+            estado = cur.fetchone()
+            if not estado:
+                return jsonify({"errorCode": "ERR3", "message": "Error al registrar usuario"}), 500
+            cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario) VALUES (%s, %s)", (int(user['idUsuario']), int(estado['idEstadoUsuario'])))
             conn.commit()
-
-            # Obtener id del nuevo usuario
-            cur.execute("SELECT idUsuario, mail, nombre, apellido FROM usuario WHERE mail=%s", (correo,))
-            user = cur.fetchone()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        
+        # Enviar el correo para la validacion del email
+        send_email(user['mail'], "Verificación de correo OVO", f"""
+            <p>Gracias por registrarte en OVO.</p>
+            <p>Por favor, haz clic en el siguiente enlace para verificar tu correo electrónico:</p>
+            <p><a href="{BASE_URL}/api/v1/auth/verify-email?key={validation_key}">Verificar mi correo</a></p>
+            <p>Si no te has registrado en OVO, puedes ignorar este correo.</p>
+            <p>Saludos,<br>El equipo de OVO</p>
+            """)
 
         # Emitir token y devolver contexto similar al login
-        token = generate_token(user[0])
-        permisos, grupos = get_user_permissions_and_groups(user[0])
+        token = generate_token(user['idUsuario'])
+        permisos, grupos = get_user_permissions_and_groups(user['idUsuario'])
         resp = jsonify({
             "usuario": {
-                "id": user[0],
-                "nombre": user[2],
-                "apellido": user[3],
-                "mail": user[1],
+                "id": user['idUsuario'],
+                "nombre": user['nombre'],
+                "apellido": user['apellido'],
+                "mail": user['mail'],
+                "dni": user['dni'],
+                "fechaNac": user['fechaNac'],
+                "idGenero": user['idGenero'],
+                "idLocalidad": user['idLocalidad'],
             },
             "permisos": permisos,
             "grupos": grupos,
@@ -1811,6 +2720,46 @@ def register_with_google():
     except Exception as e:
         log(f"/auth/register/google error: {e}\n{traceback.format_exc()}")
         return jsonify({"errorCode": "ERR3", "message": "No se registró el usuario"}), 500
+
+# Endpoint para validar el correo electrónico a partir de la key generada
+@app.route('/api/v1/auth/verify-email', methods=['GET'])
+def verify_email():
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        key = (request.args.get('key') or '').strip()
+        if not key:
+            return jsonify({"errorCode": "ERR4", "message": "Falta la clave de verificación"}), 400
+        cur.execute("SELECT * FROM usuario WHERE validationKEY=%s", (key,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"errorCode": "ERR4", "message": "Clave de verificación inválida"}), 400
+
+        # Buscar el estado Activo
+        cur.execute("SELECT * FROM estadousuario WHERE nombreEstadoUsuario=%s AND (fechaFin IS NULL OR fechaFin > NOW())", ("Activo",))
+        estado_activo = cur.fetchone()
+        if not estado_activo:
+            return jsonify({"errorCode": "ERR4", "message": "Error interno al verificar el correo"}), 500
+        id_estado_activo = int(estado_activo['idEstadoUsuario'])
+        id_usuario = int(user['idUsuario'])
+        # Quitar estados anteriores (si es que los tiene de la tabla usuarioestado)
+        cur.execute("UPDATE usuarioestado SET fechaFin=NOW() WHERE idUsuario=%s", (id_usuario,))
+        # Insertar nuevo estado Activo
+        cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario) VALUES (%s, %s)", (id_usuario, id_estado_activo))
+        conn.commit()
+        return jsonify({"ok": True, "message": "Correo verificado exitosamente"}), 200
+    except Exception as e:
+        log(f"/auth/verify-email error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al verificar el correo"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+# Ejemplo con curl:
+# curl -X GET "http://localhost:5000/api/v1/auth/verify-email?key=tu_clave_aqui"
 
 # ============================ Baja lógica de usuario (US008) ============================
 
@@ -1936,8 +2885,7 @@ def password_forgot():
             return jsonify({"errorCode": "ERR1", "message": "Email no registrado"}), 400
 
         token = _generate_reset_token(user['idUsuario'])
-        frontend_base = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000')
-        link = f"{frontend_base}/reset-password?token={token}"
+        link = f"{BASE_URL}/reset-password?token={token}"
 
         # Enviar correo con el enlace
         asunto = "Recuperación de contraseña"
@@ -2171,8 +3119,8 @@ def user_add_interest(current_user_id):
         # Agregar el nuevo interés
         cur.execute(
             """
-            INSERT INTO interesusuariocarrera (idUsuario, idCarreraInstitucion, fechaInicio)
-            VALUES (%s, %s, NOW())
+            INSERT INTO interesusuariocarrera (idUsuario, idCarreraInstitucion)
+            VALUES (%s, %s)
             """,
             (current_user_id, id_carrera_institucion)
         )
@@ -3169,28 +4117,14 @@ def user_get_profile(current_user_id: int):
         if not u:
             return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
 
-        fn = u.get('fechaNac')
-        fecha_str = None
-        try:
-            if fn:
-                # fechaNac es datetime; devolver solo fecha
-                fecha_str = fn.date().isoformat()
-        except Exception:
-            fecha_str = None
 
         return jsonify({
             "id": u.get('idUsuario'),
             "nombre": u.get('nombre'),
             "apellido": u.get('apellido'),
             "email": u.get('mail'),
-            "fechaNacimiento": fecha_str,
+            "fechaNacimiento": u.get('fechaNac'),
             "dni": u.get('dni'),
-            # "acciones": {
-            #     "editar": {"method": "PUT", "path": "/api/v1/user/profile"},
-            #     "listarCarrerasInteres": {"method": "GET", "path": "/api/v1/user/interests"},
-            #     "verHistoricoTest": {"method": "GET", "path": "/api/v1/user/tests"},
-            #     "bajaUsuario": {"method": "POST", "path": "/api/v1/auth/deactivate"}
-            # }
         }), 200
     except Exception as e:
         log(f"/user/profile GET error: {e}\n{traceback.format_exc()}")
@@ -5760,7 +6694,7 @@ def admin_institution_request_reject(current_user_id, id_institucion):
 # ============================ ABM Carrera Catálogo (US029) ============================
 # Catálogo base: tabla carrera (idCarrera, nombreCarrera, idTipoCarrera, fechaFin)
 # Endpoints (prefijo admin):
-#  GET  /api/v1/admin/catalog/careers                -> listado (incluye bajas si ?includeInactive=1)
+#  GET  /api/v1/admin/catalog/careers                -> listado (incluye bajas si )
 #  POST /api/v1/admin/catalog/careers                -> alta (campos: nombreCarrera, idTipoCarrera)  ERR1 campos obligatorios
 #  GET  /api/v1/admin/catalog/careers/<id>           -> detalle
 #  PUT  /api/v1/admin/catalog/careers/<id>           -> modificar (mismos campos) ERR1 campos obligatorios
@@ -5790,7 +6724,7 @@ def admin_catalog_careers_list(current_user_id):
         if include_inactive:
             cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera ORDER BY nombreCarrera")
         else:
-            cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera WHERE fechaFin IS NULL ORDER BY nombreCarrera")
+            cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera WHERE (fechaFin IS NULL OR fechaFin > NOW()) ORDER BY nombreCarrera")
         rows = cur.fetchall() or []
         return jsonify({'careers': rows}), 200
     except Exception as e:
@@ -5853,8 +6787,31 @@ def admin_catalog_career_update(current_user_id, id_carrera):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreCarrera') or '').strip()
     tipo = data.get('idTipoCarrera')
+    fechaFin = data.get('fechaFin')  # Puede ser None, 'NOW()' o fecha específica YYYY-MM-DD HH:MM:SS
     if not nombre or not tipo:
         return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_sql = None
+    set_null = False
+    if fechaFin:
+        if fechaFin.upper() == 'NOW()':
+            fecha_fin_sql = 'NOW()'
+        elif fechaFin.upper() == 'NULL':
+            set_null = True  # Flag para setear NULL explícitamente
+        else:
+            try:
+                # Validar formato de fecha
+                datetime.datetime.strptime(fechaFin, '%Y-%m-%d %H:%M:%S')
+                fecha_fin_sql = fechaFin
+            except ValueError:
+                try:
+                    # Intentar formato solo fecha
+                    datetime.datetime.strptime(fechaFin, '%Y-%m-%d')
+                    fecha_fin_sql = fechaFin + ' 23:59:59'  # Agregar hora por defecto
+                except ValueError:
+                    return jsonify({'errorCode':'ERR1','message':'Formato de fecha inválido. Use YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, NOW() o NULL'}), 400
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -5864,7 +6821,24 @@ def admin_catalog_career_update(current_user_id, id_carrera):
             return jsonify({'errorCode':'ERR1','message':'Carrera no encontrada.'}), 404
         if _career_exists_active(cur, nombre, tipo, exclude_id=id_carrera):
             return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
-        cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s WHERE idCarrera=%s", (nombre, tipo, id_carrera))
+        
+        # Construir consulta SQL según si hay fechaFin o no
+        if set_null:
+            # Setear fechaFin a NULL explícitamente
+            cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s, fechaFin=NULL WHERE idCarrera=%s", 
+                       (nombre, tipo, id_carrera))
+        elif fecha_fin_sql:
+            if fecha_fin_sql == 'NOW()':
+                cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s, fechaFin=NOW() WHERE idCarrera=%s", 
+                           (nombre, tipo, id_carrera))
+            else:
+                cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s, fechaFin=%s WHERE idCarrera=%s", 
+                           (nombre, tipo, fecha_fin_sql, id_carrera))
+        else:
+            # Si fechaFin no se proporciona, mantener el valor actual (no modificar fechaFin)
+            cur.execute("UPDATE carrera SET nombreCarrera=%s, idTipoCarrera=%s WHERE idCarrera=%s", 
+                       (nombre, tipo, id_carrera))
+        
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -5874,6 +6848,8 @@ def admin_catalog_career_update(current_user_id, id_carrera):
         try:
             if conn: conn.close()
         except Exception: pass
+# Ejemplo de curl:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas Actualizada\",\"idTipoCarrera\":1}"
 
 @app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['DELETE'])
 @requires_permission('ADMIN_PANEL')
@@ -5885,7 +6861,7 @@ def admin_catalog_career_delete(current_user_id, id_carrera):
         cur.execute("SELECT idCarrera FROM carrera WHERE idCarrera=%s", (id_carrera,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la carrera. Intente nuevamente.'}), 404
-        cur.execute("UPDATE carrera SET fechaFin=NOW() WHERE idCarrera=%s AND fechaFin IS NULL", (id_carrera,))
+        cur.execute("UPDATE carrera SET fechaFin=NOW() WHERE idCarrera=%s", (id_carrera,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -5896,11 +6872,31 @@ def admin_catalog_career_delete(current_user_id, id_carrera):
             if conn: conn.close()
         except Exception: pass
 
+# cURL ejemplos US029 (token Hola):
+# Listar carreras activas:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers" -H "Authorization: Bearer {{token}}"
+# Listar todas las carreras (incluye inactivas):
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers?includeInactive=true" -H "Authorization: Bearer {{token}}"
+# Crear carrera:
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/careers" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1}"
+# Detalle de carrera:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}"
+# Actualizar carrera (solo nombre y tipo):
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas Actualizada\",\"idTipoCarrera\":1}"
+# Actualizar carrera con baja inmediata:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"NOW()\"}"
+# Actualizar carrera con baja programada:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"2025-12-31 23:59:59\"}"
+# Actualizar carrera para reactivarla (quitar fecha fin):
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"NULL\"}"
+# Baja lógica mediante DELETE:
+# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}"
+
 
 # ============================ ABM TipoCarrera (US030) ============================
 # Tabla involucrada: tipocarrera (idTipoCarrera, nombreTipoCarrera, fechaFin)
 # Endpoints (prefijo admin):
-#  GET    /api/v1/admin/catalog/career-types              -> listado (activas por defecto, ?includeInactive=1 para todas)
+#  GET    /api/v1/admin/catalog/career-types              -> listado (activas por defecto,  para todas)
 #  POST   /api/v1/admin/catalog/career-types              -> alta (campo: nombreTipoCarrera) ERR1 si vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/career-types/<id>         -> detalle
 #  PUT    /api/v1/admin/catalog/career-types/<id>         -> modificar nombre ERR1 si vacío o duplicado activo
@@ -5929,7 +6925,7 @@ def admin_career_types_list(current_user_id):
         if include_inactive:
             cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera ORDER BY nombreTipoCarrera")
         else:
-            cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera WHERE fechaFin IS NULL ORDER BY nombreTipoCarrera")
+            cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera WHERE (fechaFin IS NULL OR fechaFin > NOW()) ORDER BY nombreTipoCarrera")
         rows = cur.fetchall() or []
         return jsonify({'careerTypes': rows}), 200
     except Exception as e:
@@ -6037,7 +7033,7 @@ def admin_career_type_delete(current_user_id, id_tipo):
 # ============================ ABM País (US031) ============================
 # Tabla: pais (idPais, nombrePais, fechaFin)
 # Endpoints (prefijo admin):
-#  GET    /api/v1/admin/catalog/countries              -> listado (activos por defecto, ?includeInactive=1 para todos)
+#  GET    /api/v1/admin/catalog/countries              -> listado (activos por defecto,  para todos)
 #  POST   /api/v1/admin/catalog/countries              -> alta (nombrePais) ERR1 si vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/countries/<id>         -> detalle
 #  PUT    /api/v1/admin/catalog/countries/<id>         -> modificar nombre ERR1 si vacío o duplicado activo
@@ -6047,7 +7043,7 @@ def admin_career_type_delete(current_user_id, id_tipo):
 #  ERR2: "No se pudo eliminar el país. Intente nuevamente." (error técnico / no encontrado)
 
 def _pais_exists_active(cur, nombre, exclude_id=None):
-    q = "SELECT idPais FROM pais WHERE nombrePais=%s AND fechaFin IS NULL"
+    q = "SELECT idPais FROM pais WHERE nombrePais=%s"
     params = [nombre]
     if exclude_id:
         q += " AND idPais<>%s"
@@ -6056,17 +7052,12 @@ def _pais_exists_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/countries', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_countries_list(current_user_id):
-    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+def admin_countries_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        if include_inactive:
-            cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais ORDER BY nombrePais")
-        else:
-            cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais WHERE fechaFin IS NULL ORDER BY nombrePais")
+        cur.execute("SELECT idPais, nombrePais FROM pais ORDER BY nombrePais")
         rows = cur.fetchall() or []
         return jsonify({'countries': rows}), 200
     except Exception as e:
@@ -6109,7 +7100,7 @@ def admin_country_detail(current_user_id, id_pais):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idPais, nombrePais, fechaFin FROM pais WHERE idPais=%s", (id_pais,))
+        cur.execute("SELECT idPais, nombrePais FROM pais WHERE idPais=%s", (id_pais,))
         row = cur.fetchone()
         if not row:
             return jsonify({'errorCode':'ERR1','message':'País no encontrado.'}), 404
@@ -6159,7 +7150,7 @@ def admin_country_delete(current_user_id, id_pais):
         cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el país. Intente nuevamente.'}), 404
-        cur.execute("UPDATE pais SET fechaFin=NOW() WHERE idPais=%s AND fechaFin IS NULL", (id_pais,))
+        cur.execute("DELETE FROM pais WHERE idPais=%s", (id_pais,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -6174,7 +7165,7 @@ def admin_country_delete(current_user_id, id_pais):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePais\":\"Argentina\"}"
 # Detalle:
@@ -6186,21 +7177,21 @@ def admin_country_delete(current_user_id, id_pais):
 
 
 # ============================ ABM Provincia (US032) ============================
-# Tabla: provincia (idProvincia, nombreProvincia, idPais, fechaFin)
+# Tabla: provincia (idProvincia, nombreProvincia, idPais
 # Requisito: cada provincia asociada a un país existente (tabla pais).
 # Endpoints (prefijo admin):
-#  GET    /api/v1/admin/catalog/provinces                 -> listado (solo activas, ?includeInactive=1 para todas)
+#  GET    /api/v1/admin/catalog/provinces                 -> listado (solo activas,  para todas)
 #  POST   /api/v1/admin/catalog/provinces                 -> alta (nombreProvincia, idPais) ERR1 nombre vacío, ERR2 país faltante/ inválido, duplicado activo (nombre+idPais)
 #  GET    /api/v1/admin/catalog/provinces/<id>            -> detalle
 #  PUT    /api/v1/admin/catalog/provinces/<id>            -> modificar (mismos campos) ERR1 / ERR2 según validaciones
-#  DELETE /api/v1/admin/catalog/provinces/<id>            -> baja lógica (fechaFin=NOW()) ERR3 si error técnico / inexistente
+#  DELETE /api/v1/admin/catalog/provinces/<id>            -> baja lógica ERR3 si error técnico / inexistente
 # Errores:
 #   ERR1: "Debe ingresar un nombre para la provincia." (nombre vacío)
 #   ERR2: "Debe seleccionar un país." (idPais vacío / inexistente / duplicado activo con mismo nombre en mismo país)
 #   ERR3: "No se pudo eliminar la provincia. Intente nuevamente." (falla al eliminar o no encontrada)
 
 def _provincia_duplicate_active(cur, nombre, id_pais, exclude_id=None):
-    q = "SELECT idProvincia FROM provincia WHERE nombreProvincia=%s AND idPais=%s AND fechaFin IS NULL"
+    q = "SELECT idProvincia FROM provincia WHERE nombreProvincia=%s AND idPais=%s"
     params = [nombre, id_pais]
     if exclude_id:
         q += " AND idProvincia<>%s"
@@ -6209,21 +7200,16 @@ def _provincia_duplicate_active(cur, nombre, id_pais, exclude_id=None):
     return cur.fetchone() is not None
 
 def _pais_exists(cur, id_pais):
-    cur.execute("SELECT idPais FROM pais WHERE idPais=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (id_pais,))
+    cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/provinces', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_provinces_list(current_user_id):
-    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+def admin_provinces_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        if include_inactive:
-            cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia ORDER BY nombreProvincia")
-        else:
-            cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia WHERE fechaFin IS NULL ORDER BY nombreProvincia")
+        cur.execute("SELECT idProvincia, nombreProvincia, idPais FROM provincia ORDER BY nombreProvincia")
         rows = cur.fetchall() or []
         return jsonify({'provinces': rows}), 200
     except Exception as e:
@@ -6253,7 +7239,7 @@ def admin_province_create(current_user_id):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
         if _provincia_duplicate_active(cur, nombre, id_pais):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400  # reutilizamos ERR2 para duplicado por criterio HU (no hay código específico)
-        cur.execute("INSERT INTO provincia (nombreProvincia, idPais, fechaFin) VALUES (%s,%s,NULL)", (nombre, id_pais))
+        cur.execute("INSERT INTO provincia (nombreProvincia, idPais) VALUES (%s,%s)", (nombre, id_pais))
         conn.commit()
         new_id = cur.lastrowid
         return jsonify({'ok':True,'idProvincia': new_id}), 201
@@ -6272,7 +7258,7 @@ def admin_province_detail(current_user_id, id_provincia):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idProvincia, nombreProvincia, idPais, fechaFin FROM provincia WHERE idProvincia=%s", (id_provincia,))
+        cur.execute("SELECT idProvincia, nombreProvincia, idPais FROM provincia WHERE idProvincia=%s", (id_provincia,))
         row = cur.fetchone()
         if not row:
             return jsonify({'errorCode':'ERR1','message':'Provincia no encontrada.'}), 404
@@ -6327,7 +7313,7 @@ def admin_province_delete(current_user_id, id_provincia):
         cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la provincia. Intente nuevamente.'}), 404
-        cur.execute("UPDATE provincia SET fechaFin=NOW() WHERE idProvincia=%s AND fechaFin IS NULL", (id_provincia,))
+        cur.execute("DELETE FROM provincia WHERE idProvincia=%s", (id_provincia,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -6339,10 +7325,8 @@ def admin_province_delete(current_user_id, id_provincia):
         except Exception: pass
 
 # cURL ejemplos US032 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreProvincia\":\"Córdoba\",\"idPais\":1}"
 # Detalle:
@@ -6357,7 +7341,6 @@ def admin_province_delete(current_user_id, id_provincia):
 # Tabla: localidad (idLocalidad, nombreLocalidad, idProvincia, fechaFin)
 # Requisito: cada localidad asociada a provincia existente (tabla provincia).
 # Endpoints (prefijo admin):
-#  GET    /api/v1/admin/catalog/localities                 -> listado (activas por defecto, ?includeInactive=1)
 #  POST   /api/v1/admin/catalog/localities                 -> alta (nombreLocalidad, idProvincia) ERR1 nombre vacío, ERR2 provincia inválida/faltante, duplicado (nombre+provincia) activo
 #  GET    /api/v1/admin/catalog/localities/<id>            -> detalle
 #  PUT    /api/v1/admin/catalog/localities/<id>            -> modificar campos ERR1/ERR2
@@ -6368,11 +7351,11 @@ def admin_province_delete(current_user_id, id_provincia):
 #   ERR3: "No se pudo eliminar la localidad. Intente nuevamente." (falla o no encontrada)
 
 def _provincia_exists(cur, id_provincia):
-    cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s AND (fechaFin IS NULL OR fechaFin IS NULL)", (id_provincia,))
+    cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
     return cur.fetchone() is not None
 
 def _localidad_duplicate_active(cur, nombre, id_provincia, exclude_id=None):
-    q = "SELECT idLocalidad FROM localidad WHERE nombreLocalidad=%s AND idProvincia=%s AND fechaFin IS NULL"
+    q = "SELECT idLocalidad FROM localidad WHERE nombreLocalidad=%s AND idProvincia=%s"
     params = [nombre, id_provincia]
     if exclude_id:
         q += " AND idLocalidad<>%s"
@@ -6381,17 +7364,12 @@ def _localidad_duplicate_active(cur, nombre, id_provincia, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/localities', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_localities_list(current_user_id):
-    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+def admin_localities_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        if include_inactive:
-            cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad ORDER BY nombreLocalidad")
-        else:
-            cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad WHERE fechaFin IS NULL ORDER BY nombreLocalidad")
+        cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia FROM localidad ORDER BY nombreLocalidad")
         rows = cur.fetchall() or []
         return jsonify({'localities': rows}), 200
     except Exception as e:
@@ -6420,7 +7398,7 @@ def admin_locality_create(current_user_id):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
         if _localidad_duplicate_active(cur, nombre, id_provincia):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
-        cur.execute("INSERT INTO localidad (nombreLocalidad, idProvincia, fechaFin) VALUES (%s,%s,NULL)", (nombre, id_provincia))
+        cur.execute("INSERT INTO localidad (nombreLocalidad, idProvincia) VALUES (%s,%s)", (nombre, id_provincia))
         conn.commit()
         new_id = cur.lastrowid
         return jsonify({'ok':True,'idLocalidad': new_id}), 201
@@ -6439,7 +7417,7 @@ def admin_locality_detail(current_user_id, id_localidad):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia, fechaFin FROM localidad WHERE idLocalidad=%s", (id_localidad,))
+        cur.execute("SELECT idLocalidad, nombreLocalidad, idProvincia FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         row = cur.fetchone()
         if not row:
             return jsonify({'errorCode':'ERR1','message':'Localidad no encontrada.'}), 404
@@ -6494,7 +7472,7 @@ def admin_locality_delete(current_user_id, id_localidad):
         cur.execute("SELECT idLocalidad FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la localidad. Intente nuevamente.'}), 404
-        cur.execute("UPDATE localidad SET fechaFin=NOW() WHERE idLocalidad=%s AND fechaFin IS NULL", (id_localidad,))
+        cur.execute("DELETE FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -6509,7 +7487,7 @@ def admin_locality_delete(current_user_id, id_localidad):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreLocalidad\":\"Guaymallén\",\"idProvincia\":1}"
 # Detalle:
@@ -6525,7 +7503,7 @@ def admin_locality_delete(current_user_id, id_localidad):
 # ============================ ABM Género (US034) ============================
 # Tabla: genero (idGenero, nombreGenero, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/genders                  -> listado (activas por defecto, ?includeInactive=1)
+#  GET    /api/v1/admin/catalog/genders                  -> listado (activas por defecto, )
 #  POST   /api/v1/admin/catalog/genders                  -> alta (nombreGenero) ERR1 nombre vacío (y se reutiliza para duplicado)
 #  GET    /api/v1/admin/catalog/genders/<id>             -> detalle
 #  PUT    /api/v1/admin/catalog/genders/<id>             -> modificar nombre (ERR1 si vacío o duplicado)
@@ -6535,7 +7513,7 @@ def admin_locality_delete(current_user_id, id_localidad):
 #   ERR2: "No se pudo eliminar el género. Intente nuevamente." (error al eliminar o no encontrado)
 
 def _genero_duplicate_active(cur, nombre, exclude_id=None):
-    q = "SELECT idGenero FROM genero WHERE nombreGenero=%s AND fechaFin IS NULL"
+    q = "SELECT idGenero FROM genero WHERE nombreGenero=%s"
     params = [nombre]
     if exclude_id:
         q += " AND idGenero<>%s"
@@ -6544,17 +7522,12 @@ def _genero_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/genders', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_genders_list(current_user_id):
-    include_inactive = request.args.get('includeInactive') in ('1','true','TRUE')
+def admin_genders_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        if include_inactive:
-            cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero ORDER BY nombreGenero")
-        else:
-            cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero WHERE fechaFin IS NULL ORDER BY nombreGenero")
+        cur.execute("SELECT idGenero, nombreGenero FROM genero ORDER BY nombreGenero")
         rows = cur.fetchall() or []
         return jsonify({'genders': rows}), 200
     except Exception as e:
@@ -6578,7 +7551,7 @@ def admin_gender_create(current_user_id):
         cur = conn.cursor()
         if _genero_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
-        cur.execute("INSERT INTO genero (nombreGenero, fechaFin) VALUES (%s,NULL)", (nombre,))
+        cur.execute("INSERT INTO genero (nombreGenero) VALUES (%s)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
         return jsonify({'ok':True,'idGenero': new_id}), 201
@@ -6597,7 +7570,7 @@ def admin_gender_detail(current_user_id, id_genero):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idGenero, nombreGenero, fechaFin FROM genero WHERE idGenero=%s", (id_genero,))
+        cur.execute("SELECT idGenero, nombreGenero FROM genero WHERE idGenero=%s", (id_genero,))
         row = cur.fetchone()
         if not row:
             return jsonify({'errorCode':'ERR1','message':'Género no encontrado.'}), 404
@@ -6647,7 +7620,7 @@ def admin_gender_delete(current_user_id, id_genero):
         cur.execute("SELECT idGenero FROM genero WHERE idGenero=%s", (id_genero,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el género. Intente nuevamente.'}), 404
-        cur.execute("UPDATE genero SET fechaFin=NOW() WHERE idGenero=%s AND fechaFin IS NULL", (id_genero,))
+        cur.execute("DELETE FROM genero WHERE idGenero=%s", (id_genero,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -6662,7 +7635,7 @@ def admin_gender_delete(current_user_id, id_genero):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGenero\":\"No Binario\"}"
 # Detalle:
@@ -6678,7 +7651,7 @@ def admin_gender_delete(current_user_id, id_genero):
 # ============================ ABM EstadoUsuario (US035) ============================
 # Tabla: estadousuario (idEstadoUsuario, nombreEstadoUsuario, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/user-statuses                 -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  GET    /api/v1/admin/catalog/user-statuses                 -> listado (activos por defecto;  para todos)
 #  POST   /api/v1/admin/catalog/user-statuses                 -> alta (nombreEstadoUsuario) ERR1 si vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/user-statuses/<id>            -> detalle
 #  PUT    /api/v1/admin/catalog/user-statuses/<id>            -> modificar nombre (ERR1 si vacío o duplicado)
@@ -6815,7 +7788,7 @@ def admin_user_status_delete(current_user_id, id_estado):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoUsuario\":\"Pendiente\"}"
 # Detalle:
@@ -6828,7 +7801,7 @@ def admin_user_status_delete(current_user_id, id_estado):
 # ============================ ABM Permiso (US036) ============================
 # Tabla: permiso (idPermiso, nombrePermiso, descripcion, fechaFin)
 # Endpoints (prefijo admin):
-#  GET    /api/v1/admin/catalog/permissions              -> listado (activos por defecto, ?includeInactive=1)
+#  GET    /api/v1/admin/catalog/permissions              -> listado (activos por defecto, )
 #  POST   /api/v1/admin/catalog/permissions              -> alta (nombrePermiso obligatorio, descripcion opcional) ERR1 nombre vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/permissions/<id>         -> detalle
 #  PUT    /api/v1/admin/catalog/permissions/<id>         -> modificar nombre/descripcion (ERR1 si nombre vacío o duplicado)
@@ -6967,7 +7940,7 @@ def admin_permission_delete(current_user_id, id_permiso):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePermiso\":\"VER_REPORTES\",\"descripcion\":\"Permite ver reportes\"}"
 # Detalle:
@@ -6984,7 +7957,7 @@ def admin_permission_delete(current_user_id, id_permiso):
 # ============================ ABM Grupo (US037) ============================
 # Tablas: grupo (idGrupo, nombreGrupo, descripcion, fechaFin), permisogrupo (idPermisoGrupo, idGrupo, idPermiso, fechaInicio, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/groups                  -> listado grupos (activos por defecto; ?includeInactive=1 para todos) + permisos asociados activos
+#  GET    /api/v1/admin/catalog/groups                  -> listado grupos (activos por defecto;  para todos) + permisos asociados activos
 #  POST   /api/v1/admin/catalog/groups                  -> alta (nombreGrupo obligatorio, descripcion opcional, lista permisos opcional) ERR1 nombre vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/groups/<id>             -> detalle grupo + permisos activos
 #  PUT    /api/v1/admin/catalog/groups/<id>             -> modificar nombre/descripcion/permisos (reemplaza set de permisos) ERR1 nombre vacío o duplicado
@@ -7179,7 +8152,7 @@ def admin_group_delete(current_user_id, id_grupo):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}"
 # Crear (con permisos 1 y 2):
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGrupo\":\"Supervisores\",\"descripcion\":\"Grupo de supervisión\",\"permisos\":[1,2]}"
 # Detalle:
@@ -7195,7 +8168,7 @@ def admin_group_delete(current_user_id, id_grupo):
 # ============================ ABM TipoInstitución (US038) ============================
 # Tabla: tipoinstitucion (idTipoInstitucion, nombreTipoInstitucion, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/institution-types                  -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  GET    /api/v1/admin/catalog/institution-types                  -> listado (activos por defecto;  para todos)
 #  POST   /api/v1/admin/catalog/institution-types                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado)
 #  GET    /api/v1/admin/catalog/institution-types/<id>             -> detalle
 #  PUT    /api/v1/admin/catalog/institution-types/<id>             -> modificar nombre ERR1 (vacío o duplicado)
@@ -7332,7 +8305,7 @@ def admin_institution_type_delete(current_user_id, id_tipo):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoInstitucion\":\"Universidad Privada\"}"
 # Detalle:
@@ -7353,7 +8326,7 @@ def admin_institution_type_delete(current_user_id, id_tipo):
  # Según dump, la tabla actual solo muestra id y nombreModalidad (no fechaFin). Para cumplir baja lógica añadiremos control si existe fechaFin;
  # si no existe la columna, la baja será física (DELETE). Asumimos existencia potencial de fechaFin por consistencia; si no está, DELETE.
  # Endpoints:
- #  GET    /api/v1/admin/catalog/career-modalities                  -> listado (activos por defecto; ?includeInactive=1 para todos si existe fechaFin)
+ #  GET    /api/v1/admin/catalog/career-modalities                  -> listado (activos por defecto;  para todos si existe fechaFin)
  #  POST   /api/v1/admin/catalog/career-modalities                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
  #  GET    /api/v1/admin/catalog/career-modalities/<id>             -> detalle
  #  PUT    /api/v1/admin/catalog/career-modalities/<id>             -> modificar nombre ERR1 (vacío o duplicado)
@@ -7527,7 +8500,7 @@ def admin_career_modality_delete(current_user_id, id_mod):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreModalidad\":\"Virtual\"}"
 # Detalle:
@@ -7541,7 +8514,7 @@ def admin_career_modality_delete(current_user_id, id_mod):
  # ============================ ABM Aptitud (US040) ============================
  # Tabla: aptitud (idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja)
  # Endpoints:
- #  GET    /api/v1/admin/catalog/aptitudes                  -> listado (activas por defecto; ?includeInactive=1 para todas)
+ #  GET    /api/v1/admin/catalog/aptitudes                  -> listado (activas por defecto;  para todas)
  #  POST   /api/v1/admin/catalog/aptitudes                  -> alta (nombre obligatorio, descripcion opcional) ERR1 (vacío o duplicado activo)
  #  GET    /api/v1/admin/catalog/aptitudes/<id>             -> detalle
  #  PUT    /api/v1/admin/catalog/aptitudes/<id>             -> modificar nombre/descripcion ERR1 (vacío o duplicado)
@@ -7680,7 +8653,7 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
 # Listar activas:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}"
 # Listar todas:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreAptitud\":\"Liderazgo\",\"descripcion\":\"Capacidad de guiar equipos\"}"
 # Detalle:
@@ -7693,7 +8666,7 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
  # ============================ ABM EstadoAcceso (US041) ============================
  # Tabla: estadoacceso (idEstadoAcceso, nombreEstadoAcceso, fechaFin)
  # Endpoints:
- #  GET    /api/v1/admin/catalog/access-statuses                  -> listado (activos por defecto; ?includeInactive=1 para todos)
+ #  GET    /api/v1/admin/catalog/access-statuses                  -> listado (activos por defecto;  para todos)
  #  POST   /api/v1/admin/catalog/access-statuses                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
  #  GET    /api/v1/admin/catalog/access-statuses/<id>             -> detalle
  #  PUT    /api/v1/admin/catalog/access-statuses/<id>             -> modificar nombre ERR1 (vacío o duplicado)
@@ -7830,7 +8803,7 @@ def admin_access_status_delete(current_user_id, id_estado):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoAcceso\":\"Bloqueado\"}"
 # Detalle:
@@ -7995,7 +8968,7 @@ def admin_action_type_delete(current_user_id, id_tipo):
 ### ============================ ABM EstadoInstitución (US043) ============================
 # Tabla: estadoinstitucion (idEstadoInstitucion, nombreEstadoInstitucion, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/institution-states                -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  GET    /api/v1/admin/catalog/institution-states                -> listado (activos por defecto;  para todos)
 #  POST   /api/v1/admin/catalog/institution-states                -> alta (nombreEstadoInstitucion) ERR1 si vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/institution-states/<id>           -> detalle
 #  PUT    /api/v1/admin/catalog/institution-states/<id>           -> modificar nombre (ERR1 si vacío o duplicado)
@@ -8132,7 +9105,7 @@ def admin_institution_state_delete(current_user_id, id_estado):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoInstitucion\":\"Pendiente\"}"
 # Detalle:
@@ -8146,7 +9119,7 @@ def admin_institution_state_delete(current_user_id, id_estado):
 ### ============================ ABM EstadoCarreraInstitución (US044) ============================
 # Tabla: estadocarrerainstitucion (idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin)
 # Endpoints:
-#  GET    /api/v1/admin/catalog/career-institution-statuses                -> listado (activos por defecto; ?includeInactive=1 para todos)
+#  GET    /api/v1/admin/catalog/career-institution-statuses                -> listado (activos por defecto;  para todos)
 #  POST   /api/v1/admin/catalog/career-institution-statuses                -> alta (nombreEstadoCarreraInstitucion) ERR1 si vacío o duplicado activo
 #  GET    /api/v1/admin/catalog/career-institution-statuses/<id>           -> detalle
 #  PUT    /api/v1/admin/catalog/career-institution-statuses/<id>           -> modificar nombre (ERR1 si vacío o duplicado)
@@ -8283,7 +9256,7 @@ def admin_career_institution_status_delete(current_user_id, id_estado):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses" -H "Authorization: Bearer {{token}}"
 # Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses?includeInactive=1" -H "Authorization: Bearer {{token}}"
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoCarreraInstitucion\":\"Activa\"}"
 # Detalle:
@@ -8488,39 +9461,83 @@ def _determine_initial_state(value:str):
         return 2  # Suspendido/Bloqueado
     return 1  # Activo por defecto
 
+# Endpoint para crear usuario
 @app.route('/api/v1/admin/catalog/users', methods=['POST'])
 @requires_permission('ADMIN_PANEL')
 def admin_user_create(current_user_id):
     data = request.get_json(silent=True) or {}
+    correo = (data.get('correo') or '').strip()
+    dni = data.get('dni')
     nombre = (data.get('nombre') or '').strip()
     apellido = (data.get('apellido') or '').strip()
-    email = (data.get('email') or '').strip()
+    fechaNac = data.get('fechaNac')
+    idGenero = data.get('idGenero')
+    idLocalidad = data.get('idLocalidad')
     estado_inicial_raw = data.get('estadoInicial')  # activo|inactivo (bloqueado)
     grupo_id = data.get('grupoId')  # opcional
-    if not nombre or not apellido or not email:
+
+    # ERR1: campos requeridos incompletos
+    required_missing = []
+    if not dni:
+        required_missing.append('dni')
+    if not apellido:
+        required_missing.append('apellido')
+    if not fechaNac:
+        required_missing.append('fechaNac')
+    if not idGenero:
+        required_missing.append('idGenero')
+    if not idLocalidad:
+        required_missing.append('idLocalidad')
+    if not nombre:
+        required_missing.append('nombre')
+    if not correo:
+        required_missing.append('correo')
+    if required_missing:
         return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
-    if not re.match(EMAIL_REGEX_ADMIN, email):
+
+    if not re.match(EMAIL_REGEX_ADMIN, correo):
         return jsonify({'errorCode':'ERR2','message':'Debe ingresar un correo electrónico válido.'}), 400
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor()
-        if _user_email_exists(cur, email):
+        
+        # verificar el id de localidad y de genero
+        cur.execute("SELECT * FROM localidad WHERE idLocalidad=%s", (idLocalidad,))
+        localidad = cur.fetchone()
+        cur.execute("SELECT * FROM genero WHERE idGenero=%s", (idGenero,))
+        genero = cur.fetchone()
+
+        if not localidad:
+            return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+        if not genero:
+            return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
+        
+        if _user_email_exists(cur, correo):
             return jsonify({'errorCode':'ERR2','message':'Debe ingresar un correo electrónico válido.'}), 400
+        
         # contraseña temporal aleatoria
         temp_pass = generate_password()
         hashed = hash_password(temp_pass)
-        cur.execute("INSERT INTO usuario (mail, nombre, apellido, contrasena) VALUES (%s,%s,%s,%s)", (email, nombre, apellido, hashed))
+        cur.execute(
+            "INSERT INTO usuario (mail, dni, nombre, apellido, contrasena, fechaNac, idGenero, idLocalidad) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (correo, dni, nombre, apellido, hashed, fechaNac, int(idGenero), int(idLocalidad))
+        )
         new_id = cur.lastrowid
+        
         # Estado inicial
         estado_id = _determine_initial_state(estado_inicial_raw)
         _insert_user_state(cur, new_id, estado_id)
+        
         # Grupo opcional (usuariogrupo)
         if grupo_id:
             try:
                 cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (new_id, int(grupo_id)))
             except Exception:
                 pass  # si falla grupo no se aborta creación
+        
         conn.commit()
         return jsonify({'ok':True,'idUsuario':new_id,'passwordTemporal':temp_pass}), 201
     except Exception as e:
@@ -8530,6 +9547,8 @@ def admin_user_create(current_user_id):
         try:
             if conn: conn.close()
         except Exception: pass
+# Ejemplo de curl para este endpoint
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"correo\":\"juan.perez@example.com\",\"dni\":\"12345678\",\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"fechaNac\":\"1990-01-15\",\"idGenero\":1,\"idLocalidad\":1,\"estadoInicial\":\"activo\"}"
 
 def _change_user_state(user_id:int, target_state:int):
     conn=None
@@ -8550,44 +9569,16 @@ def _change_user_state(user_id:int, target_state:int):
             if conn: conn.close()
         except Exception: pass
 
-@app.route('/api/v1/admin/catalog/users/<int:user_id>/block', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
-def admin_user_block(current_user_id, user_id):
-    ok, status = _change_user_state(user_id, 2)
-    if not ok:
-        code = 'ERR3'
-        msg = 'No se pudo cambiar el estado del usuario. Intente nuevamente.'
-        if status == 404:
-            return jsonify({'errorCode':code,'message':msg}), 404
-        return jsonify({'errorCode':code,'message':msg}), 500
-    return jsonify({'ok':True}), 200
-
-@app.route('/api/v1/admin/catalog/users/<int:user_id>/unblock', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
-def admin_user_unblock(current_user_id, user_id):
-    ok, status = _change_user_state(user_id, 1)
-    if not ok:
-        code = 'ERR3'
-        msg = 'No se pudo cambiar el estado del usuario. Intente nuevamente.'
-        if status == 404:
-            return jsonify({'errorCode':code,'message':msg}), 404
-        return jsonify({'errorCode':code,'message':msg}), 500
-    return jsonify({'ok':True}), 200
-
+# Endpoint para baja lógica usuario
 @app.route('/api/v1/admin/catalog/users/<int:user_id>', methods=['DELETE'])
 @requires_permission('ADMIN_PANEL')
 def admin_user_delete(current_user_id, user_id):
     conn=None
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario=%s", (user_id,))
-        if not cur.fetchone():
-            return jsonify({'errorCode':'ERR4','message':'No se pudo eliminar el usuario. Intente nuevamente.'}), 404
-        # Set estado Baja (3)
-        _insert_user_state(cur, user_id, 3)
-        # Opcional: marcar fechaFin o algún flag adicional si existiera columna (no en dump actual)
-        conn.commit()
+        # Obtener el usuario y actualizar su estado por la tabla intermedia a Baja
+        success, status_code = _change_user_state(user_id, 3)  # 3=Baja
+        if not success:
+            return jsonify({'errorCode':'ERR4','message':'No se pudo eliminar el usuario. Intente nuevamente.'}), status_code
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US046 delete user error: {e}\n{traceback.format_exc()}")
@@ -8597,11 +9588,69 @@ def admin_user_delete(current_user_id, user_id):
             if conn: conn.close()
         except Exception: pass
 
+
+
+
+
+# Endpoint para modificar usuario
+@app.route('/api/v1/admin/catalog/users/<int:user_id>', methods=['PUT'])
+@requires_permission('ADMIN_PANEL')
+def admin_user_update(current_user_id, user_id):
+    conn = None
+    try:
+        # Verificar datos obligatorios
+        data = request.get_json(silent=True) or {}
+        nombre = (data.get('nombre') or '').strip()
+        apellido = (data.get('apellido') or '').strip()
+        email = (data.get('email') or '').strip()
+        grupos = data.get('grupos')
+        idEstado = data.get('idEstado')
+        # VERIFICAR TODOS LOS PARAMETROS son obligatorios
+        if not nombre or not apellido or not email or grupos is None or idEstado is None:
+            return jsonify({'errorCode':'ERR4','message':'Debe completar todos los campos obligatorios.'}), 400
+        # Validar email
+        if not re.match(EMAIL_REGEX_ADMIN, email):
+            return jsonify({'errorCode':'ERR4','message':'El email enviado no cumple los requisitos.'}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Verificar si el usuario existe
+        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario=%s", (user_id,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR4','message':'No se pudo modificar el usuario. Intente nuevamente.'}), 404
+        # Actualizar datos del usuario
+        if _user_email_exists(cur, email):
+            cur.execute("SELECT idUsuario FROM usuario WHERE mail=%s", (email,))
+            row = cur.fetchone()
+            if row and row[0] != user_id:
+                return jsonify({'errorCode':'ERR4','message':'El email ya está en uso por otro usuario.'}), 400
+        cur.execute("UPDATE usuario SET nombre=%s, apellido=%s, mail=%s WHERE idUsuario=%s", (nombre, apellido, email, user_id))
+        # Actualizar grupos (baja lógica de todos y alta de los enviados)
+        cur.execute("UPDATE usuariogrupo SET fechaFin=NOW() WHERE idUsuario=%s AND fechaFin IS NULL", (user_id,))
+        for gid in grupos:
+            cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo, fechaInicio) VALUES (%s, %s, NOW())",
+                        (user_id, gid))
+        # Actualizar estado actualizando la fecha fin y creando nuevo registro
+        _insert_user_state(cur, user_id, idEstado)
+        conn.commit()
+        return jsonify({'ok':True}), 200
+    except Exception as e:
+        log(f"US046 update user error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR4','message':'No se pudo modificar el usuario. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+# Curl de ejemplo para este endpoint:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/users/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"grupos\":[1,2],\"idEstado\":1}"
+
+
+
+
 # cURL ejemplos US046 (token Hola):
 # Crear usuario activo:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"estadoInicial\":\"activo\"}"
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"correo\":\"juan.perez@example.com\",\"dni\":\"12345678\",\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"fechaNac\":\"1990-01-15\",\"idGenero\":1,\"idLocalidad\":1,\"estadoInicial\":\"activo\"}"
 # Crear usuario bloqueado inicialmente:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Ana\",\"apellido\":\"Lopez\",\"email\":\"ana.lopez@example.com\",\"estadoInicial\":\"inactivo\"}"
+# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"correo\":\"ana.lopez@example.com\",\"dni\":\"87654321\",\"nombre\":\"Ana\",\"apellido\":\"Lopez\",\"fechaNac\":\"1985-03-20\",\"idGenero\":2,\"idLocalidad\":2,\"estadoInicial\":\"inactivo\"}"
 # Bloquear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/users/1/block" -H "Authorization: Bearer {{token}}"
 # Desbloquear:
