@@ -3445,7 +3445,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/careers?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/careers",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3615,7 +3615,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-types?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-types",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3785,7 +3785,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/countries?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/countries",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3955,7 +3955,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/provinces?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/provinces",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4125,7 +4125,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/localities?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/localities",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4295,7 +4295,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/genders?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/genders",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4465,7 +4465,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/user-statuses?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/user-statuses",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4635,7 +4635,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/permissions?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/permissions",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4805,7 +4805,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/groups?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/groups",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4975,7 +4975,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-types?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-types",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5145,7 +5145,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-modalities?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-modalities",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5315,7 +5315,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/aptitudes?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/aptitudes",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5485,7 +5485,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/access-statuses?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/access-statuses",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5819,7 +5819,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-states?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-states",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5989,7 +5989,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses?includeInactive=1",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses",
 							"host": [
 								"{{baseURL}}"
 							],
