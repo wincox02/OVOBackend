@@ -651,7 +651,7 @@ def admin_set_user_group(current_user_id, user_id: int):
         return jsonify({"errorCode": "ERR1", "message": "idGrupo inválido"}), 400
     conn = mysql.connector.connect(**DB_CONFIG)
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Validar existencia de usuario y grupo
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
         if not cur.fetchone():
@@ -692,7 +692,7 @@ def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
     """Elimina un grupo de un usuario (actualiza fechaFin)."""
     conn = mysql.connector.connect(**DB_CONFIG)
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute(
             "UPDATE usuariogrupo SET fechaFin = NOW() WHERE idUsuario = %s AND idGrupo = %s AND (fechaFin IS NULL OR fechaFin > NOW())",
             (user_id, id_grupo)
@@ -723,7 +723,7 @@ def admin_add_user_permission(current_user_id, user_id: int):
         return jsonify({"errorCode": "ERR1", "message": "idPermiso inválido"}), 400
     conn = mysql.connector.connect(**DB_CONFIG)
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
         if not cur.fetchone():
             return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
@@ -761,7 +761,7 @@ def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int)
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         # Validar que el usuario tenga el permiso en cuestion
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute(
             "SELECT 1 FROM usuariopermiso WHERE idUsuario=%s AND idPermiso=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
             (user_id, id_permiso)
@@ -795,7 +795,7 @@ def admin_delete_user(current_user_id, user_id: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Validar que el usuario exista
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
         if not cur.fetchone():
@@ -805,7 +805,7 @@ def admin_delete_user(current_user_id, user_id: int):
         row = cur.fetchone()
         if not row:
             return jsonify({"errorCode": "ERR1", "message": "Estado 'Baja' no encontrado en el sistema"}), 500
-        baja_id = row[0]
+        baja_id = row['idEstadoUsuario']
         # Actualizar usuario estado con fecha fin en el estado actual y agregar nuevo estado 'Baja'
         cur.execute(
             "UPDATE usuarioestado SET fechaFin = NOW() WHERE idUsuario=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
@@ -885,20 +885,19 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
 
     conn = mysql.connector.connect(**DB_CONFIG)
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Validar usuario
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
         if not cur.fetchone():
             return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
         # Validar permisos existen
         in_clause = ','.join(['%s'] * len(selected_ids))
-        cur.execute(f"SELECT COUNT(*) FROM permiso WHERE idPermiso IN ({in_clause})", tuple(selected_ids))
-        count = cur.fetchone()[0]
+        cur.execute(f"SELECT COUNT(*) as total FROM permiso WHERE idPermiso IN ({in_clause})", tuple(selected_ids))
+        count = cur.fetchone()['total']
         if count != len(selected_ids):
             return jsonify({"errorCode": "ERR1", "message": "Algún permiso no existe"}), 400
 
         # Permisos actuales activos
-        cur = conn.cursor(dictionary=True)
         cur.execute(
             "SELECT idPermiso FROM usuariopermiso WHERE idUsuario=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
             (user_id,)
@@ -1997,13 +1996,11 @@ def register_with_google():
             user = cur.fetchone()
             if not user:
                 # Para registros con Google, usamos valores por defecto para campos obligatorios
-                cur = conn.cursor()
                 cur.execute(
                     "INSERT INTO usuario (mail, nombre, apellido, dni, fechaNac, contrasena, idGenero, idLocalidad) VALUES (%s, %s, %s, 0, '1900-01-01', '', 1, 1)",
                     (email, nombre, apellido)
                 )
                 conn.commit()
-                cur = conn.cursor(dictionary=True)
                 cur.execute("SELECT idUsuario, mail, nombre, apellido FROM usuario WHERE mail=%s", (email,))
                 user = cur.fetchone()
         finally:
@@ -2087,7 +2084,7 @@ def deactivate_current_user(current_user_id):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
 
         # Validar existencia de usuario
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (current_user_id,))
@@ -2095,7 +2092,6 @@ def deactivate_current_user(current_user_id):
             return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
 
         # Verificar si ya posee un estado activo Baja
-        cur = conn.cursor(dictionary=True)
         cur.execute(
             """
             SELECT ue.idUsuarioEstado, eu.nombreEstadoUsuario
@@ -2110,7 +2106,6 @@ def deactivate_current_user(current_user_id):
             return jsonify({"ok": False, "message": "El usuario ya se encuentra dado de Baja"}), 400
 
         # Asegurar que exista el estado Baja
-        cur = conn.cursor()
         cur.execute(
             "SELECT idEstadoUsuario FROM estadousuario WHERE nombreEstadoUsuario=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
             ("Baja",)
@@ -2130,7 +2125,7 @@ def deactivate_current_user(current_user_id):
             row = cur.fetchone()
         if not row:
             return jsonify({"errorCode": "ERR1", "message": "No se pudo realizar la Baja del usuario. Intente más tarde."}), 500
-        id_estado_baja = row[0]
+        id_estado_baja = row['idEstadoUsuario']
 
         # Cerrar estados activos actuales (si los hay)
         cur.execute(
@@ -2462,14 +2457,13 @@ def user_list_tests(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
+        # Obtener los test y los nombreEstadoTest asociados
         cur.execute(
             """
-            SELECT 
-                t.idResultadoCuestionario AS idTest,
-                t.fechaResultadoCuestionario
+            SELECT t.idTest, t.fechaTest, et.nombreEstadoTest
             FROM test t
+            JOIN estadotest et ON t.idEstadoTest = et.idEstadoTest
             WHERE t.idUsuario = %s
-            ORDER BY t.fechaResultadoCuestionario DESC, t.idResultadoCuestionario DESC
             """,
             (current_user_id,)
         )
@@ -2477,7 +2471,8 @@ def user_list_tests(current_user_id):
         data = [
             {
                 "id": r.get('idTest'),
-                "fecha": (r.get('fechaResultadoCuestionario').isoformat(sep=' ') if r.get('fechaResultadoCuestionario') else None)
+                "fecha": (r.get('fechaTest').isoformat(sep=' ') if r.get('fechaTest') else None),
+                "estado": r.get('nombreEstadoTest')
             }
             for r in rows
         ]
@@ -2504,7 +2499,7 @@ def user_test_access(current_user_id, id_test: int):
             """
             SELECT 1
             FROM test
-            WHERE idResultadoCuestionario = %s AND idUsuario = %s
+            WHERE idTest = %s AND idUsuario = %s
             """,
             (id_test, current_user_id)
         )
@@ -2585,9 +2580,9 @@ def user_test_result(id_test: int):
         if auth.get('user_id') is not None:
             cursor.execute(
                 """
-                SELECT t.idResultadoCuestionario, t.fechaResultadoCuestionario
+                SELECT t.idTest, t.fechaTest
                 FROM test t
-                WHERE t.idResultadoCuestionario = %s AND t.idUsuario = %s
+                WHERE t.idTest = %s AND t.idUsuario = %s
                 """,
                 (id_test, auth['user_id'])
             )
@@ -2595,9 +2590,9 @@ def user_test_result(id_test: int):
             # Token dev o no se pudo decodificar JWT: no validamos pertenencia
             cursor.execute(
                 """
-                SELECT t.idResultadoCuestionario, t.fechaResultadoCuestionario
+                SELECT t.idTest, t.fechaTest
                 FROM test t
-                WHERE t.idResultadoCuestionario = %s
+                WHERE t.idTest = %s
                 """,
                 (id_test,)
             )
@@ -2684,8 +2679,8 @@ def user_test_result(id_test: int):
         return jsonify({
             "ok": True,
             "test": {
-                "id": test_row.get("idResultadoCuestionario"),
-                "fecha": test_row.get("fechaResultadoCuestionario").isoformat() if test_row.get("fechaResultadoCuestionario") else None,
+                "id": test_row.get("idTest"),
+                "fecha": test_row.get("fechaTest").isoformat() if test_row.get("fechaTest") else None,
             },
             "resumen": resumen,
             "aptitudes": aptitudes,
@@ -2716,7 +2711,7 @@ def user_test_result(id_test: int):
 # Elimina las respuestas del cuestionario en curso para el usuario y permite empezar uno nuevo.
 # Reglas:
 # - Requiere autenticación. Acepta token de prueba "Hola" y JWT HS256 (SECRET_KEY).
-# - Si hay user_id (JWT): intenta borrar el test en curso del usuario (fechaResultadoCuestionario IS NULL).
+# - Si hay user_id (JWT): intenta borrar el test en curso del usuario (fechaTest IS NULL).
 #   - Si no hay en curso y se envía idTest en el body, valida que pertenezca al usuario y esté en curso.
 # - Si NO hay user_id (token dev Hola): requiere idTest en el body y lo elimina si está en curso.
 # - Idempotente: si no hay test en curso, responde ok true.
@@ -2768,10 +2763,10 @@ def user_restart_test():
             # Buscar test en curso del usuario
             cur.execute(
                 """
-                SELECT idResultadoCuestionario AS id
+                SELECT idTest AS id
                 FROM test
-                WHERE idUsuario = %s AND fechaResultadoCuestionario IS NULL
-                ORDER BY idResultadoCuestionario DESC
+                WHERE idUsuario = %s AND fechaTest IS NULL
+                ORDER BY idTest DESC
                 LIMIT 1
                 """,
                 (user_id,)
@@ -2782,9 +2777,9 @@ def user_restart_test():
             elif isinstance(id_test_body, int):
                 cur.execute(
                     """
-                    SELECT idResultadoCuestionario AS id
+                    SELECT idTest AS id
                     FROM test
-                    WHERE idResultadoCuestionario = %s AND idUsuario = %s AND fechaResultadoCuestionario IS NULL
+                    WHERE idTest = %s AND idUsuario = %s AND fechaTest IS NULL
                     """,
                     (id_test_body, user_id)
                 )
@@ -2796,9 +2791,9 @@ def user_restart_test():
             if isinstance(id_test_body, int):
                 cur.execute(
                     """
-                    SELECT idResultadoCuestionario AS id
+                    SELECT idTest AS id
                     FROM test
-                    WHERE idResultadoCuestionario = %s AND fechaResultadoCuestionario IS NULL
+                    WHERE idTest = %s AND fechaTest IS NULL
                     """,
                     (id_test_body,)
                 )
@@ -2828,7 +2823,7 @@ def user_restart_test():
 
         cur.execute("DELETE FROM testaptitud WHERE idTest = %s", (test_id_to_delete,))
         cur.execute("DELETE FROM testcarrerainstitucion WHERE idTest = %s", (test_id_to_delete,))
-        cur.execute("DELETE FROM test WHERE idResultadoCuestionario = %s", (test_id_to_delete,))
+        cur.execute("DELETE FROM test WHERE idTest = %s", (test_id_to_delete,))
         conn.commit()
 
         return jsonify({
@@ -3701,7 +3696,7 @@ def institutions_registration_submit():
             return jsonify({"errorCode": "ERR3", "message": "Correo inválido. Verifique el formato"}), 400
 
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
 
         # Validar FKs
         cur.execute("SELECT 1 FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
@@ -3711,14 +3706,14 @@ def institutions_registration_submit():
         row = cur.fetchone()
         if not row:
             return jsonify({"errorCode": "ERR1", "message": "Localidad inválida"}), 400
-        prov_of_loc = row[0]
+        prov_of_loc = row['idProvincia']
         if int(prov_of_loc) != provincia_id:
             return jsonify({"errorCode": "ERR1", "message": "Localidad no pertenece a la provincia seleccionada"}), 400
         cur.execute("SELECT idPais FROM provincia WHERE idProvincia=%s", (provincia_id,))
         row = cur.fetchone()
         if not row:
             return jsonify({"errorCode": "ERR1", "message": "Provincia inválida"}), 400
-        pais_of_prov = row[0]
+        pais_of_prov = row['idPais']
         if int(pais_of_prov) != pais_id:
             return jsonify({"errorCode": "ERR1", "message": "Provincia no pertenece al país seleccionado"}), 400
 
@@ -3734,8 +3729,8 @@ def institutions_registration_submit():
         conn.commit()
 
         # Obtener id
-        cur.execute("SELECT LAST_INSERT_ID()")
-        id_institucion = cur.fetchone()[0]
+        cur.execute("SELECT LAST_INSERT_ID() as id")
+        id_institucion = cur.fetchone()['id']
 
         # Estado Pendiente: asegurar existencia y asociar
         cur.execute(
@@ -3754,7 +3749,7 @@ def institutions_registration_submit():
                 ("Pendiente",)
             )
             row = cur.fetchone()
-        id_estado = row[0]
+        id_estado = row['idEstadoInstitucion']
 
         cur.execute(
             """
@@ -3940,10 +3935,10 @@ def create_user_and_send_mail(current_user_id: int, id_institucion: int):
 # ============================ Gestión de carreras por institución (US018) ============================
 
 def _get_my_institution_id(conn, current_user_id: int):
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s ORDER BY idInstitucion LIMIT 1", (current_user_id,))
     row = cur.fetchone()
-    return (row[0] if row else None)
+    return (row['idInstitucion'] if row else None)
 
 # Listar carreras asociadas a mi institución
 @app.route('/api/v1/institutions/me/careers', methods=['GET'])
@@ -4133,7 +4128,7 @@ def my_institution_careers_add(current_user_id: int):
             return jsonify({"errorCode": "ERR1", "message": "Debe completar todos los campos obligatorios para guardar los cambios."}), 400
 
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         id_inst = _get_my_institution_id(conn, current_user_id)
         if not id_inst:
             return jsonify({"errorCode": "ERR1", "message": "No tiene una institución asignada"}), 404
@@ -4164,7 +4159,7 @@ def my_institution_careers_add(current_user_id: int):
                     ("Activa",)
                 )
                 row = cur.fetchone()
-            id_estado = row[0]
+            id_estado = row['idEstadoCarreraInstitucion']
         else:
             cur.execute("SELECT 1 FROM estadocarrerainstitucion WHERE idEstadoCarreraInstitucion=%s", (id_estado,))
             if not cur.fetchone():
@@ -4376,12 +4371,12 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
 
 def _career_institution_owned(conn, current_user_id: int, id_ci: int):
     """Devuelve idInstitucion si la carrera pertenece a la institución del usuario."""
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s LIMIT 1", (current_user_id,))
     row = cur.fetchone()
     if not row:
         return None
-    id_inst = row[0]
+    id_inst = row['idInstitucion']
     cur.execute(
         "SELECT 1 FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s",
         (id_ci, id_inst)
@@ -4438,11 +4433,11 @@ def my_institution_career_faq_create(current_user_id: int, id_ci: int):
         conn = mysql.connector.connect(**DB_CONFIG)
         if not _career_institution_owned(conn, current_user_id, id_ci):
             return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Verificar si ya tiene FAQ
         cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
         row = cur.fetchone()
-        if row and row[0]:
+        if row and row['idPreguntaFrecuente']:
             return jsonify({"errorCode": "ERR1", "message": "Ya existe una pregunta frecuente"}), 400
         # Insertar FAQ
         cur.execute(
@@ -4450,8 +4445,8 @@ def my_institution_career_faq_create(current_user_id: int, id_ci: int):
             (pregunta, respuesta)
         )
         conn.commit()
-        cur.execute("SELECT LAST_INSERT_ID()")
-        id_faq = cur.fetchone()[0]
+        cur.execute("SELECT LAST_INSERT_ID() as id")
+        id_faq = cur.fetchone()['id']
         # Asociar a la carrera
         cur.execute("UPDATE carrerainstitucion SET idPreguntaFrecuente=%s WHERE idCarreraInstitucion=%s", (id_faq, id_ci))
         conn.commit()
@@ -4481,14 +4476,14 @@ def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: i
         conn = mysql.connector.connect(**DB_CONFIG)
         if not _career_institution_owned(conn, current_user_id, id_ci):
             return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Validar pertenencia del FAQ
         cur.execute(
             "SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s",
             (id_ci,)
         )
         row = cur.fetchone()
-        if not row or not row[0] or int(row[0]) != id_faq:
+        if not row or not row['idPreguntaFrecuente'] or int(row['idPreguntaFrecuente']) != id_faq:
             return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
         sets = []
         params = []
@@ -4529,10 +4524,10 @@ def my_institution_career_faq_delete(current_user_id: int, id_ci: int, id_faq: i
         conn = mysql.connector.connect(**DB_CONFIG)
         if not _career_institution_owned(conn, current_user_id, id_ci):
             return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
         row = cur.fetchone()
-        if not row or not row[0] or int(row[0]) != id_faq:
+        if not row or not row['idPreguntaFrecuente'] or int(row['idPreguntaFrecuente']) != id_faq:
             return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
         # Baja lógica + desasociar
         cur.execute("UPDATE preguntafrecuente SET fechaFin = NOW() WHERE idPreguntaFrecuente=%s", (id_faq,))
@@ -4565,14 +4560,14 @@ def my_institution_career_faq_delete(current_user_id: int, id_ci: int, id_faq: i
 #   ERR4: Error técnico al eliminar -> "No se pudo eliminar el material complementario. Intente nuevamente."
 
 def _my_inst_id(conn, user_id:int):
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s ORDER BY idInstitucion LIMIT 1", (user_id,))
     r = cur.fetchone()
-    return r[0] if r else None
+    return r['idInstitucion'] if r else None
 
 def _ci_belongs(conn, id_ci:int, id_inst:int):
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s", (id_ci, id_inst))
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT 1 as exists FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s", (id_ci, id_inst))
     return cur.fetchone() is not None
 
 # Listar material complementario de una carrera propia
@@ -4637,7 +4632,7 @@ def materials_create(current_user_id:int, id_ci:int):
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
             return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute(
             """INSERT INTO contenidomultimedia (titulo, descripcion, enlace, fechaInicio, fechaFin, idCarreraInstitucion)
             VALUES (%s,%s,%s,NOW(),NULL,%s)""",
@@ -4675,8 +4670,8 @@ def materials_update(current_user_id:int, id_ci:int, id_mat:int):
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
             return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT 1 as exists FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
         if not cur.fetchone():
             return jsonify({"errorCode":"ERR1","message":"Material no encontrado"}), 404
         sets=[]; params=[]
@@ -4714,8 +4709,8 @@ def materials_delete(current_user_id:int, id_ci:int, id_mat:int):
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
             return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT 1 as exists FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
         if not cur.fetchone():
             return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
         cur.execute("UPDATE contenidomultimedia SET fechaFin=NOW() WHERE idContenidoMultimedia=%s", (id_mat,))
@@ -4749,10 +4744,10 @@ def materials_delete(current_user_id:int, id_ci:int, id_mat:int):
 #   ERR05: Máx 50% con valor 0
 
 def _get_base_carrera_id(conn, id_ci:int):
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT idCarrera FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
     r = cur.fetchone()
-    return r[0] if r else None
+    return r['idCarrera'] if r else None
 
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/aptitudes', methods=['GET'])
 @token_required
@@ -4841,12 +4836,12 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
         if not id_carrera_base:
             return jsonify({"errorCode":"ERR01","message":"Carrera no encontrada"}), 404
 
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Validar que las aptitudes existan
         ids = [iid for iid,_ in parsed]
         in_clause = ','.join(['%s']*len(ids))
-        cur.execute(f"SELECT COUNT(*) FROM aptitud WHERE idAptitud IN ({in_clause})", tuple(ids))
-        if cur.fetchone()[0] != len(ids):
+        cur.execute(f"SELECT COUNT(*) as count FROM aptitud WHERE idAptitud IN ({in_clause})", tuple(ids))
+        if cur.fetchone()['count'] != len(ids):
             return jsonify({"errorCode":"ERR01","message":"Alguna aptitud no existe"}), 400
         # Reemplazar completamente
         cur.execute("DELETE FROM aptitudcarrera WHERE idCarreraInstitucion=%s", (id_carrera_base,))
@@ -5854,7 +5849,7 @@ def _read_backup_config(cur):
     row = cur.fetchone()
     if not row:
         return {"frecuencia": None, "horaEjecucion": None, "cantidadBackupConservar": None}
-    return {"frecuencia": row[0], "horaEjecucion": row[1], "cantidadBackupConservar": row[2]}
+    return {"frecuencia": row['frecuencia'], "horaEjecucion": row['horaEjecucion'], "cantidadBackupConservar": row['cantidadBackupConservar']}
 
 @app.route('/api/v1/admin/backup/config', methods=['GET'])
 @requires_permission('ADMIN_PANEL')
@@ -5862,7 +5857,7 @@ def backup_config_get(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         data = _read_backup_config(cur)
         return jsonify(data), 200
     except Exception as e:
@@ -5894,7 +5889,7 @@ def backup_config_save(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Limpiar configuración previa (simplificación, tabla almacena único registro)
         cur.execute("DELETE FROM configuracionbackup")
         cur.execute("INSERT INTO configuracionbackup (frecuencia, horaEjecucion, cantidadBackupConservar) VALUES (%s,%s,%s)", (freq, hora+':00', cant_int))
@@ -5926,11 +5921,11 @@ def backup_config_save(current_user_id):
 _RESTORE_JOBS = {}  # clave fechaBackup(str) -> {status: pending|running|success|error, progress:int, message}
 
 def _serialize_backup(row):
-    # row: (fechaBackup, directorio, tamano)
+    # row: dictionary with keys fechaBackup, directorio, tamano
     return {
-        "fechaBackup": row[0].strftime('%Y-%m-%d %H:%M:%S') if row[0] else None,
-        "directorio": row[1],
-        "tamano": row[2]
+        "fechaBackup": row['fechaBackup'].strftime('%Y-%m-%d %H:%M:%S') if row['fechaBackup'] else None,
+        "directorio": row['directorio'],
+        "tamano": row['tamano']
     }
 
 @app.route('/api/v1/admin/backup/list', methods=['GET'])
@@ -5939,7 +5934,7 @@ def backup_list(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT fechaBackup, directorio, tamano FROM backup ORDER BY fechaBackup DESC")
         rows = cur.fetchall() or []
         backups = [_serialize_backup(r) for r in rows]
@@ -5973,7 +5968,7 @@ def backup_restore_start(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT fechaBackup FROM backup WHERE fechaBackup=%s", (fecha,))
         r = cur.fetchone()
         if not r:
@@ -6011,12 +6006,12 @@ def backup_restore_status(current_user_id):
 # Se implementa una capa simulada utilizando estructuras en memoria para estado y metadatos mientras no se normalice el modelo.
 # Una vez que existan columnas reales (ej: institucion.nombre, institucion.email, institucion.idTipoInstitucion, institucion.idLocalidad,
 # institucionestado(idInstitucion, idEstadoInstitucion, fechaInicio)) se deberá reescribir la lógica para usar SQL.
-# Estados simulados: PENDIENTE, APROBADA, RECHAZADA.
+# Estados simulados: Pendiente, APROBADA, RECHAZADA.
 # Filtros: nombre (substring), tipoId (int), estado (cadena), from/to (fecha solicitud en memoria). ERR1 filtros inválidos.
 # Acciones: aprobar (ERR2 si falla), rechazar (ERR3 si falla). Justificación opcional en rechazo.
 
 _INSTITUTION_REQUESTS_MEM = {
-    # idInstitucion: { 'nombre': str, 'email': str, 'tipoId': int, 'localizacion': '---', 'estado': 'PENDIENTE', 'fechaSolicitud': datetime.date }
+    # idInstitucion: { 'nombre': str, 'email': str, 'tipoId': int, 'localizacion': '---', 'estado': 'Pendiente', 'fechaSolicitud': datetime.date }
 }
 
 @app.route('/api/v1/admin/institutions/requests', methods=['GET'])
@@ -6025,7 +6020,7 @@ def admin_institution_requests_list(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
         # Consultar todas las instituciones con su información básica
         cur.execute("""
@@ -6049,41 +6044,41 @@ def admin_institution_requests_list(current_user_id):
         solicitudes = []
         
         for inst in instituciones:
-            id_institucion, nombre, email, fecha_alta, tipo_id, localidad, provincia, pais = inst
-            
             # Obtener el último estado de la institución
             cur.execute("""
-                SELECT ei.nombreEstadoInstitucion
+                SELECT ei.nombreEstadoInstitucion, ie.justificacion
                 FROM institucionestado ie
                 JOIN estadoinstitucion ei ON ie.idEstadoInstitucion = ei.idEstadoInstitucion
                 WHERE ie.idInstitucion = %s 
                   AND ie.fechaFin IS NULL
                 ORDER BY ie.fechaInicio DESC
                 LIMIT 1
-            """, (id_institucion,))
+            """, (inst['idInstitucion'],))
             
             estado_row = cur.fetchone()
-            estado = estado_row[0] if estado_row else "PENDIENTE"
-            
+            estado = estado_row['nombreEstadoInstitucion'] if estado_row else "Pendiente"
+            justificacion = estado_row['justificacion'] if estado_row else None
+
             # Construir localización
             localizacion_parts = []
-            if localidad:
-                localizacion_parts.append(localidad)
-            if provincia:
-                localizacion_parts.append(provincia)
-            if pais:
-                localizacion_parts.append(pais)
+            if inst['nombreLocalidad']:
+                localizacion_parts.append(inst['nombreLocalidad'])
+            if inst['nombreProvincia']:
+                localizacion_parts.append(inst['nombreProvincia'])
+            if inst['nombrePais']:
+                localizacion_parts.append(inst['nombrePais'])
             
             localizacion = ", ".join(localizacion_parts) if localizacion_parts else "N/D"
             
             solicitud = {
-                "idInstitucion": id_institucion,
-                "nombre": nombre or f"Institución {id_institucion}",
-                "email": email or "N/D",
+                "idInstitucion": inst['idInstitucion'],
+                "nombre": inst['nombreInstitucion'] or f"Institución {inst['idInstitucion']}",
+                "email": inst['mail'] or "N/D",
                 "estado": estado,
-                "fechaSolicitud": fecha_alta.strftime('%Y-%m-%d') if fecha_alta else "N/D",
-                "tipoId": tipo_id or 1,
-                "localizacion": localizacion
+                "fechaSolicitud": inst['fechaAlta'].strftime('%Y-%m-%d') if inst['fechaAlta'] else "N/D",
+                "tipoId": inst['idTipoInstitucion'] or 1,
+                "localizacion": localizacion,
+                "justificacion": justificacion
             }
             
             solicitudes.append(solicitud)
@@ -6098,17 +6093,79 @@ def admin_institution_requests_list(current_user_id):
             if conn: conn.close()
         except Exception: pass
 
+
+
 @app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/approve', methods=['POST'])
 @requires_permission('ADMIN_PANEL')
 def admin_institution_request_approve(current_user_id, id_institucion):
+    conn=None
     try:
-        meta = _INSTITUTION_REQUESTS_MEM.get(id_institucion)
-        if not meta or meta['estado'] != 'PENDIENTE':
-            return jsonify({'errorCode':'ERR2','message':'No se pudo aprobar la solicitud. Intente nuevamente.'}), 404
-        # Simular actualización
-        meta['estado'] = 'APROBADA'
-        # Aquí se enviaría correo con credenciales
-        return jsonify({'ok': True, 'message':'Institución aprobada.'}), 200
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Verificar que la institución exista
+        cur.execute("SELECT idInstitucion FROM institucion WHERE idInstitucion=%s", (id_institucion,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'La institución no existe.'}), 404
+        # Verificar el estado actual pasando por la tabla intermedia
+        cur.execute("""
+            SELECT ei.nombreEstadoInstitucion, ei.idEstadoInstitucion
+            FROM institucionestado ie
+            JOIN estadoinstitucion ei ON ie.idEstadoInstitucion = ei.idEstadoInstitucion
+            WHERE ie.idInstitucion = %s AND (ie.fechaFin IS NULL OR ie.fechaFin > NOW())
+            ORDER BY ie.fechaInicio DESC
+            LIMIT 1
+        """, (id_institucion,))
+        estado_actual = cur.fetchone()
+        if not estado_actual:
+            return jsonify({'errorCode':'ERR2','message':'No se pudo obtener el estado actual.'}), 404
+        
+        # Obtenemos el id del estado 'Aprobada'
+        cur.execute("SELECT * FROM estadoinstitucion WHERE nombreEstadoInstitucion='Aprobada' LIMIT 1")
+        estado_aprobada = cur.fetchone()
+        if not estado_aprobada:
+            return jsonify({'errorCode':'ERR2','message':'No se pudo obtener el estado de Aprobada.'}), 404
+        id_estado_aprobada = estado_aprobada['idEstadoInstitucion']
+        
+        # Actualizar la fecha fin del estado actual y crear nuevo estado 'Aprobada'
+        cur.execute("""
+            UPDATE institucionestado
+            SET fechaFin = NOW()
+            WHERE idInstitucion = %s AND idEstadoInstitucion = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+        """, (id_institucion, estado_actual['idEstadoInstitucion']))
+
+        cur.execute("""
+            INSERT INTO institucionestado (idInstitucion, idEstadoInstitucion, fechaInicio)
+            VALUES (%s, %s, NOW())
+        """, (id_institucion, id_estado_aprobada))
+
+        # Enviar correo de notificación de aprobación
+        cur.execute("SELECT mail, nombreInstitucion FROM institucion WHERE idInstitucion = %s", (id_institucion,))
+        institucion_info = cur.fetchone()
+        
+        if institucion_info and institucion_info['mail']:
+            try:
+                send_email(
+                    institucion_info['mail'], 
+                    "Solicitud de registro aprobada - OVO", 
+                    f"""
+                    Estimados,
+                    
+                    Nos complace informarle que su solicitud de registro para la institución "{institucion_info['nombreInstitucion']}" ha sido aprobada exitosamente.
+                    
+                    Su institución ahora forma parte de la plataforma OVO y puede comenzar a gestionar sus carreras y contenido académico.
+                    
+                    Para acceder a su panel de administración, utilice las credenciales que le serán enviadas por separado.
+                    
+                    Saludos cordiales,
+                    Equipo OVO
+                    """
+                )
+            except Exception as email_error:
+                log(f"Error sending approval email: {email_error}")
+
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, 'message': 'Solicitud aprobada.'}), 200
     except Exception as e:
         log(f"US028 approve error: {e}\n{traceback.format_exc()}")
         return jsonify({'errorCode':'ERR2','message':'No se pudo aprobar la solicitud. Intente nuevamente.'}), 500
@@ -6116,21 +6173,206 @@ def admin_institution_request_approve(current_user_id, id_institucion):
 @app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/reject', methods=['POST'])
 @requires_permission('ADMIN_PANEL')
 def admin_institution_request_reject(current_user_id, id_institucion):
+    conn=None
     try:
-        meta = _INSTITUTION_REQUESTS_MEM.get(id_institucion)
-        if not meta or meta['estado'] != 'PENDIENTE':
-            return jsonify({'errorCode':'ERR3','message':'No se pudo rechazar la solicitud. Intente nuevamente.'}), 404
         data = request.get_json(silent=True) or {}
-        just = data.get('justificacion')
-        meta['estado'] = 'RECHAZADA'
-        meta['justificacion'] = just
-        return jsonify({'ok': True, 'message':'Institución rechazada.'}), 200
+        justificacion = (data.get('justificacion') or '').strip()
+        if not justificacion:
+            return jsonify({'errorCode':'ERR1','message':'La justificacion es obligatoria.'}), 400
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        
+        # Verificar que la institución exista
+        cur.execute("SELECT idInstitucion FROM institucion WHERE idInstitucion=%s", (id_institucion,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR3','message':'La institución no existe.'}), 404
+        
+        # Verificar el estado actual
+        cur.execute("""
+            SELECT ei.nombreEstadoInstitucion
+            FROM institucionestado ie
+            JOIN estadoinstitucion ei ON ie.idEstadoInstitucion = ei.idEstadoInstitucion
+            WHERE ie.idInstitucion = %s AND (ie.fechaFin IS NULL OR ie.fechaFin > NOW())
+            ORDER BY ie.fechaInicio DESC
+            LIMIT 1
+        """, (id_institucion,))
+        
+        estado_actual = cur.fetchone()
+        if not estado_actual or estado_actual['nombreEstadoInstitucion'] != 'Pendiente':
+            return jsonify({'errorCode':'ERR3','message':'Solo se pueden rechazar instituciones en estado Pendiente.'}), 400
+        
+        # Obtener el id del estado 'Rechazada'
+        cur.execute("SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion='Rechazada' LIMIT 1")
+        estado_rechazada = cur.fetchone()
+        if not estado_rechazada:
+            # Crear el estado si no existe
+            cur.execute("INSERT INTO estadoinstitucion (nombreEstadoInstitucion) VALUES (%s)", ("Rechazada",))
+            conn.commit()
+            estado_rechazada = {'idEstadoInstitucion': cur.lastrowid}
+        
+        id_estado_rechazada = estado_rechazada['idEstadoInstitucion']
+        
+        # Cerrar el estado actual y crear nuevo estado 'Rechazada'
+        cur.execute("""
+            UPDATE institucionestado 
+            SET fechaFin = NOW() 
+            WHERE idInstitucion = %s AND fechaFin IS NULL
+        """, (id_institucion,))
+        
+        cur.execute("""
+            INSERT INTO institucionestado (idInstitucion, idEstadoInstitucion, fechaInicio, justificacion)
+            VALUES (%s, %s, NOW(), %s)
+        """, (id_institucion, id_estado_rechazada, justificacion))
+        
+        conn.commit()
+        
+        # Enviar correo de notificación de rechazo
+        cur.execute("SELECT mail, nombreInstitucion FROM institucion WHERE idInstitucion = %s", (id_institucion,))
+        institucion_info = cur.fetchone()
+        
+        if institucion_info and institucion_info['mail']:
+            try:
+                send_email(
+                    institucion_info['mail'], 
+                    "Solicitud de registro rechazada - OVO", 
+                    f"""
+                    Estimados,
+                    
+                    Lamentamos informarle que su solicitud de registro para la institución "{institucion_info['nombreInstitucion']}" ha sido rechazada.
+                    
+                    Motivo del rechazo: {justificacion}
+                    
+                    Si considera que esto es un error o desea realizar una nueva solicitud con las correcciones necesarias, puede contactarnos o enviar una nueva solicitud.
+                    
+                    Saludos cordiales,
+                    Equipo OVO
+                    """
+                )
+            except Exception as email_error:
+                log(f"Error sending rejection email: {email_error}")
+        
+        return jsonify({'ok': True, 'message': 'Solicitud rechazada correctamente.'}), 200
+
     except Exception as e:
         log(f"US028 reject error: {e}\n{traceback.format_exc()}")
         return jsonify({'errorCode':'ERR3','message':'No se pudo rechazar la solicitud. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
 
 
-    
+# -- Volcando estructura para tabla ovo.institucion
+# CREATE TABLE IF NOT EXISTS `institucion` (
+#   `idInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+#   `idTipoInstitucion` int(11) NOT NULL,
+#   `idLocalidad` int(11) DEFAULT NULL,
+#   `idUsuario` int(11) DEFAULT NULL,
+#   `anioFundacion` int(11) NOT NULL,
+#   `codigoPostal` int(11) NOT NULL,
+#   `nombreInstitucion` varchar(50) NOT NULL,
+#   `CUIT` int(11) NOT NULL,
+#   `direccion` varchar(50) NOT NULL,
+#   `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+#   `siglaInstitucion` varchar(50) NOT NULL,
+#   `telefono` varchar(50) NOT NULL,
+#   `mail` varchar(50) NOT NULL,
+#   `sitioWeb` varchar(50) NOT NULL,
+#   `urlLogo` varchar(50) NOT NULL,
+#   PRIMARY KEY (`idInstitucion`),
+#   KEY `FK_institucion_tipoinstitucion` (`idTipoInstitucion`),
+#   KEY `FK_institucion_localidad` (`idLocalidad`),
+#   KEY `FK_institucion_usuario` (`idUsuario`),
+#   CONSTRAINT `FK_institucion_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE SET NULL ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucion_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucion_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- La exportación de datos fue deseleccionada.
+
+# -- Volcando estructura para tabla ovo.institucionestado
+# CREATE TABLE IF NOT EXISTS `institucionestado` (
+#   `idinstitucionEstado` int(11) NOT NULL AUTO_INCREMENT,
+#   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+#   `fechaFin` datetime DEFAULT NULL,
+#   `idEstadoInstitucion` int(11) DEFAULT NULL,
+#   `idInstitucion` int(11) DEFAULT NULL,
+#   PRIMARY KEY (`idinstitucionEstado`),
+#   KEY `FK_institucionestado_estadoinstitucion` (`idEstadoInstitucion`),
+#   KEY `FK_institucionestado_institucion` (`idInstitucion`),
+#   CONSTRAINT `FK_institucionestado_estadoinstitucion` FOREIGN KEY (`idEstadoInstitucion`) REFERENCES `estadoinstitucion` (`idEstadoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucionestado_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.estadoinstitucion
+# CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
+#   `idEstadoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+#   `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
+#   `fechaFin` datetime DEFAULT NULL,
+#   PRIMARY KEY (`idEstadoInstitucion`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# Endpoint para dar de baja la institución
+@app.route('/api/v1/admin/institutions/<int:id_institucion>/deactivate', methods=['POST'])
+@requires_permission('ADMIN_PANEL')
+def admin_institution_deactivate(current_user_id, id_institucion):
+    conn=None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Verificar que la institución exista
+        cur.execute("SELECT idInstitucion FROM institucion WHERE idInstitucion=%s", (id_institucion,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR3','message':'La institución no existe.'}), 404
+        # Actualizar la fechaFin de todos los estados activos
+        cur.execute("""
+            UPDATE institucionestado SET fechaFin=NOW() WHERE idInstitucion=%s AND (fechaFin IS NULL OR fechaFin > NOW())
+        """, (id_institucion,))
+
+        # Obtener id de estado "Baja"
+        cur.execute("SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion='Baja'", ())
+        estado_baja = cur.fetchone()
+        if not estado_baja:
+            return jsonify({'errorCode':'ERR3','message':'No se encontró el estado "Baja".'}), 404
+
+        # Actualizar el estado de la institución
+        cur.execute("""
+            INSERT INTO institucionestado (idInstitucion, idEstadoInstitucion, fechaInicio, fechaFin)
+            VALUES (%s, %s, NOW(), NULL)
+        """, (id_institucion, estado_baja['idEstadoInstitucion']))
+
+        # Enviar correo electrónico notificando la baja
+        cur.execute("SELECT mail, nombreInstitucion FROM institucion WHERE idInstitucion = %s", (id_institucion,))
+        institucion_info = cur.fetchone()
+        if institucion_info and institucion_info['mail']:
+            try:
+                send_email(
+                    to=institucion_info['mail'],
+                    subject="Notificación de baja institución - OVO",
+                    body=f"""
+                    Estimados,
+
+                    Se ha dado de baja la institución: {institucion_info['nombreInstitucion']}
+                    Si considera que esto es un error o desea más información, por favor contacte a soporte.
+                    Saludos cordiales,
+                    Equipo OVO
+                    """
+                )
+            except Exception as e:
+                log(f"US028 send email error: {e}\n{traceback.format_exc()}")
+
+        conn.commit()
+        return jsonify({'ok': True, 'message': 'Institución dada de baja correctamente.'}), 200
+    except Exception as e:
+        log(f"US028 deactivate institution error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo dar de baja la institución. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+# Curl ejemplo:
+# curl -X POST {{baseURL}}/api/v1/admin/institutions/5/deactivate -H "Authorization: Bearer {{token}}"
+
 # ============================ ABM Carrera Catálogo (US029) ============================
 # Catálogo base: tabla carrera (idCarrera, nombreCarrera, idTipoCarrera, fechaFin)
 # Endpoints (prefijo admin):
@@ -6182,7 +6424,7 @@ def admin_catalog_career_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _career_exists_active(cur, nombre, tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
         cur.execute("INSERT INTO carrera (nombreCarrera, idTipoCarrera) VALUES (%s,%s)", (nombre, tipo))
@@ -6251,7 +6493,7 @@ def admin_catalog_career_update(current_user_id, id_carrera):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idCarrera FROM carrera WHERE idCarrera=%s", (id_carrera,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Carrera no encontrada.'}), 404
@@ -6293,7 +6535,7 @@ def admin_catalog_career_delete(current_user_id, id_carrera):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idCarrera FROM carrera WHERE idCarrera=%s", (id_carrera,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la carrera. Intente nuevamente.'}), 404
@@ -6378,7 +6620,7 @@ def admin_career_type_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _tipo_carrera_exists_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
         cur.execute("INSERT INTO tipocarrera (nombreTipoCarrera) VALUES (%s)", (nombre,))
@@ -6423,7 +6665,7 @@ def admin_career_type_update(current_user_id, id_tipo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idTipoCarrera FROM tipocarrera WHERE idTipoCarrera=%s", (id_tipo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Tipo de carrera no encontrado.'}), 404
@@ -6446,7 +6688,7 @@ def admin_career_type_delete(current_user_id, id_tipo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idTipoCarrera FROM tipocarrera WHERE idTipoCarrera=%s", (id_tipo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de carrera. Intente nuevamente.'}), 404
@@ -6510,7 +6752,7 @@ def admin_country_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _pais_exists_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
         cur.execute("INSERT INTO pais (nombrePais) VALUES (%s)", (nombre,))
@@ -6555,7 +6797,7 @@ def admin_country_update(current_user_id, id_pais):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'País no encontrado.'}), 404
@@ -6578,7 +6820,7 @@ def admin_country_delete(current_user_id, id_pais):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idPais FROM pais WHERE idPais=%s", (id_pais,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el país. Intente nuevamente.'}), 404
@@ -6670,7 +6912,7 @@ def admin_province_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # validar país
         if not _pais_exists(cur, id_pais):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
@@ -6721,7 +6963,7 @@ def admin_province_update(current_user_id, id_provincia):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Provincia no encontrada.'}), 404
@@ -6746,7 +6988,7 @@ def admin_province_delete(current_user_id, id_provincia):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idProvincia FROM provincia WHERE idProvincia=%s", (id_provincia,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la provincia. Intente nuevamente.'}), 404
@@ -6830,7 +7072,7 @@ def admin_locality_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if not _provincia_exists(cur, id_provincia):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
         if _localidad_duplicate_active(cur, nombre, id_provincia):
@@ -6880,7 +7122,7 @@ def admin_locality_update(current_user_id, id_localidad):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idLocalidad FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Localidad no encontrada.'}), 404
@@ -6905,7 +7147,7 @@ def admin_locality_delete(current_user_id, id_localidad):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idLocalidad FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la localidad. Intente nuevamente.'}), 404
@@ -6985,7 +7227,7 @@ def admin_gender_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _genero_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
         cur.execute("INSERT INTO genero (nombreGenero) VALUES (%s)", (nombre,))
@@ -7030,7 +7272,7 @@ def admin_gender_update(current_user_id, id_genero):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idGenero FROM genero WHERE idGenero=%s", (id_genero,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Género no encontrado.'}), 404
@@ -7053,7 +7295,7 @@ def admin_gender_delete(current_user_id, id_genero):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idGenero FROM genero WHERE idGenero=%s", (id_genero,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el género. Intente nuevamente.'}), 404
@@ -7134,7 +7376,7 @@ def admin_user_status_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _estado_usuario_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
         cur.execute("INSERT INTO estadousuario (nombreEstadoUsuario, fechaFin) VALUES (%s, NULL)", (nombre,))
@@ -7179,7 +7421,7 @@ def admin_user_status_update(current_user_id, id_estado):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idEstadoUsuario FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Estado no encontrado.'}), 404
@@ -7202,7 +7444,7 @@ def admin_user_status_delete(current_user_id, id_estado):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idEstadoUsuario FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado. Intente nuevamente.'}), 404
@@ -7281,7 +7523,7 @@ def admin_permission_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _permiso_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
         cur.execute("INSERT INTO permiso (nombrePermiso, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
@@ -7327,7 +7569,7 @@ def admin_permission_update(current_user_id, id_permiso):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s", (id_permiso,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Permiso no encontrado.'}), 404
@@ -7350,7 +7592,7 @@ def admin_permission_delete(current_user_id, id_permiso):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idPermiso FROM permiso WHERE idPermiso=%s", (id_permiso,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el permiso. Intente nuevamente.'}), 404
@@ -7452,7 +7694,7 @@ def admin_group_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _grupo_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el grupo.'}), 400
         cur.execute("INSERT INTO grupo (nombreGrupo, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
@@ -7514,7 +7756,7 @@ def admin_group_update(current_user_id, id_grupo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idGrupo FROM grupo WHERE idGrupo=%s", (id_grupo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Grupo no encontrado.'}), 404
@@ -7523,7 +7765,7 @@ def admin_group_update(current_user_id, id_grupo):
         cur.execute("UPDATE grupo SET nombreGrupo=%s, descripcion=%s WHERE idGrupo=%s", (nombre, descripcion, id_grupo))
         # Actualizar permisos: cerrar los no incluidos y agregar los nuevos
         cur.execute("SELECT idPermiso FROM permisogrupo WHERE idGrupo=%s AND fechaFin IS NULL", (id_grupo,))
-        actuales = {r[0] for r in cur.fetchall() or []}
+        actuales = {r['idPermiso'] for r in cur.fetchall() or []}
         nuevos = set([pid for pid in permisos if isinstance(pid, int)])
         a_cerrar = actuales - nuevos
         a_agregar = nuevos - actuales
@@ -7556,7 +7798,7 @@ def admin_group_delete(current_user_id, id_grupo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idGrupo FROM grupo WHERE idGrupo=%s", (id_grupo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el grupo. Intente nuevamente.'}), 404
@@ -7639,7 +7881,7 @@ def admin_institution_type_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _tipo_institucion_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
         cur.execute("INSERT INTO tipoinstitucion (nombreTipoInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
@@ -7684,7 +7926,7 @@ def admin_institution_type_update(current_user_id, id_tipo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idTipoInstitucion FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Tipo de institución no encontrado.'}), 404
@@ -7707,7 +7949,7 @@ def admin_institution_type_delete(current_user_id, id_tipo):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idTipoInstitucion FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de institución. Intente nuevamente.'}), 404
@@ -7808,7 +8050,7 @@ def admin_career_modality_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _modalidad_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la modalidad.'}), 400
         # Insert (ignorar fechaFin si no existe)
@@ -7860,7 +8102,7 @@ def admin_career_modality_update(current_user_id, id_mod):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Verificar existencia
         try:
             cur.execute("SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
@@ -7890,7 +8132,7 @@ def admin_career_modality_delete(current_user_id, id_mod):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         # Verificar existencia
         cur.execute("SELECT idModalidadCarreraInstitucion FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
         if not cur.fetchone():
@@ -7979,7 +8221,7 @@ def admin_aptitud_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _aptitud_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
         cur.execute("INSERT INTO aptitud (nombreAptitud, descripcion, fechaAlta, fechaBaja) VALUES (%s,%s,NOW(),NULL)", (nombre, descripcion))
@@ -8025,7 +8267,7 @@ def admin_aptitud_update(current_user_id, id_aptitud):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idAptitud FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Aptitud no encontrada.'}), 404
@@ -8048,7 +8290,7 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         cur.execute("SELECT idAptitud FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la aptitud. Intente nuevamente.'}), 404
@@ -8126,7 +8368,7 @@ def admin_access_status_create(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         if _estado_acceso_duplicate_active(cur, nombre):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
         cur.execute("INSERT INTO estadoacceso (nombreEstadoAcceso, fechaFin) VALUES (%s, NULL)", (nombre,))
