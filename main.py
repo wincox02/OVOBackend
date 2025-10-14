@@ -4344,8 +4344,28 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
         if not cur.fetchone():
             return jsonify({"errorCode": "ERR2", "message": "No se pudo eliminar la carrera. Intente nuevamente."}), 400
 
-        # Desactivar vía fechaFin
-        cur.execute("UPDATE carrerainstitucion SET fechaFin = NOW() WHERE idCarreraInstitucion=%s", (id_ci,))
+        # Obtener o crear estado "Inactiva"
+        cur.execute(
+            "SELECT idEstadoCarreraInstitucion FROM estadocarrerainstitucion WHERE nombreEstadoCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
+            ("Inactiva",)
+        )
+        estado_inactiva = cur.fetchone()
+        if not estado_inactiva:
+            # Crear estado "Inactiva" si no existe
+            cur.execute(
+                "INSERT INTO estadocarrerainstitucion (nombreEstadoCarreraInstitucion, fechaFin) VALUES (%s, NULL)",
+                ("Inactiva",)
+            )
+            cur.execute("SELECT LAST_INSERT_ID() as id")
+            id_estado_inactiva = cur.fetchone()[0]
+        else:
+            id_estado_inactiva = estado_inactiva[0]
+
+        # Desactivar vía fechaFin y cambiar estado a Inactiva
+        cur.execute(
+            "UPDATE carrerainstitucion SET idEstadoCarreraInstitucion = %s WHERE idCarreraInstitucion=%s", 
+            (id_estado_inactiva, id_ci)
+        )
         conn.commit()
         return jsonify({"ok": True}), 200
     except Exception as e:
@@ -4365,50 +4385,36 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
 
 
 # # ============================ Gestión de Preguntas Frecuentes por Carrera (US019) ============================
-# Se reutiliza la tabla existente `preguntafrecuente` y el campo
-# `idPreguntaFrecuente` de `carrerainstitucion` (un FAQ por carrera-institución).
-# Si en el futuro se requieren múltiples FAQs por carrera, habría que normalizar.
+# Se utiliza la tabla `preguntafrecuente` que tiene FK `idCarreraInstitucion` hacia `carrerainstitucion`.
+# El esquema permite múltiples FAQs por carrera-institución, así que el endpoint GET retorna todas las activas
+# y el POST permite agregar nuevas FAQs sin restricciones de cantidad.
 
-def _career_institution_owned(conn, current_user_id: int, id_ci: int):
-    """Devuelve idInstitucion si la carrera pertenece a la institución del usuario."""
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s LIMIT 1", (current_user_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    id_inst = row['idInstitucion']
-    cur.execute(
-        "SELECT 1 FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s",
-        (id_ci, id_inst)
-    )
-    return id_inst if cur.fetchone() else None
-
-# Listar FAQ de una carrera-institución (0 o 1)
+# Listar FAQs de una carrera-institución (0 o más)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs', methods=['GET'])
 @token_required
 def my_institution_career_faq_get(current_user_id: int, id_ci: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        if not _career_institution_owned(conn, current_user_id, id_ci):
-            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """
             SELECT pf.idPreguntaFrecuente, pf.nombrePregunta, pf.respuesta, pf.fechaFin
-            FROM carrerainstitucion ci
-            JOIN preguntafrecuente pf ON pf.idPreguntaFrecuente = ci.idPreguntaFrecuente
-            WHERE ci.idCarreraInstitucion=%s AND ci.idPreguntaFrecuente IS NOT NULL
+            FROM preguntafrecuente pf
+            WHERE pf.idCarreraInstitucion=%s
               AND (pf.fechaFin IS NULL OR pf.fechaFin > NOW())
+            ORDER BY pf.idPreguntaFrecuente ASC
             """,
             (id_ci,)
         )
-        row = cur.fetchone()
-        data = ([] if not row else [{
-            "idPreguntaFrecuente": row['idPreguntaFrecuente'],
-            "pregunta": row['nombrePregunta'],
-            "respuesta": row['respuesta']
-        }])
+        rows = cur.fetchall() or []
+        data = []
+        for row in rows:
+            data.append({
+                "idPreguntaFrecuente": row['idPreguntaFrecuente'],
+                "pregunta": row['nombrePregunta'],
+                "respuesta": row['respuesta']
+            })
         return jsonify(data), 200
     except Exception as e:
         log(f"/institutions/me/careers/{id_ci}/faqs GET error: {e}\n{traceback.format_exc()}")
@@ -4431,25 +4437,15 @@ def my_institution_career_faq_create(current_user_id: int, id_ci: int):
         if not pregunta or not respuesta:
             return jsonify({"errorCode": "ERR1", "message": "Datos incompletos"}), 400
         conn = mysql.connector.connect(**DB_CONFIG)
-        if not _career_institution_owned(conn, current_user_id, id_ci):
-            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
-        # Verificar si ya tiene FAQ
-        cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
-        row = cur.fetchone()
-        if row and row['idPreguntaFrecuente']:
-            return jsonify({"errorCode": "ERR1", "message": "Ya existe una pregunta frecuente"}), 400
-        # Insertar FAQ
+        # Insertar FAQ directamente sin verificar límites
         cur.execute(
-            "INSERT INTO preguntafrecuente (fechaFin, nombrePregunta, respuesta) VALUES (NULL,%s,%s)",
-            (pregunta, respuesta)
+            "INSERT INTO preguntafrecuente (idCarreraInstitucion, fechaFin, nombrePregunta, respuesta) VALUES (%s, NULL, %s, %s)",
+            (id_ci, pregunta, respuesta)
         )
         conn.commit()
         cur.execute("SELECT LAST_INSERT_ID() as id")
         id_faq = cur.fetchone()['id']
-        # Asociar a la carrera
-        cur.execute("UPDATE carrerainstitucion SET idPreguntaFrecuente=%s WHERE idCarreraInstitucion=%s", (id_faq, id_ci))
-        conn.commit()
         return jsonify({"ok": True, "idPreguntaFrecuente": int(id_faq)}), 201
     except Exception as e:
         try:
@@ -4474,16 +4470,14 @@ def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: i
         if pregunta is None and respuesta is None:
             return jsonify({"errorCode": "ERR1", "message": "Sin datos para actualizar"}), 400
         conn = mysql.connector.connect(**DB_CONFIG)
-        if not _career_institution_owned(conn, current_user_id, id_ci):
-            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
         # Validar pertenencia del FAQ
         cur.execute(
-            "SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s",
-            (id_ci,)
+            "SELECT 1 FROM preguntafrecuente WHERE idPreguntaFrecuente=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin > NOW())",
+            (id_faq, id_ci)
         )
         row = cur.fetchone()
-        if not row or not row['idPreguntaFrecuente'] or int(row['idPreguntaFrecuente']) != id_faq:
+        if not row:
             return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
         sets = []
         params = []
@@ -4515,23 +4509,20 @@ def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: i
             if conn: conn.close()
         except Exception: pass
 
-# Eliminar (desasociar + baja lógica) FAQ
+# Eliminar FAQ (baja lógica)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs/<int:id_faq>', methods=['DELETE'])
 @token_required
 def my_institution_career_faq_delete(current_user_id: int, id_ci: int, id_faq: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        if not _career_institution_owned(conn, current_user_id, id_ci):
-            return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idPreguntaFrecuente FROM carrerainstitucion WHERE idCarreraInstitucion=%s", (id_ci,))
+        cur.execute("SELECT 1 FROM preguntafrecuente WHERE idPreguntaFrecuente=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin > NOW())", (id_faq, id_ci))
         row = cur.fetchone()
-        if not row or not row['idPreguntaFrecuente'] or int(row['idPreguntaFrecuente']) != id_faq:
+        if not row:
             return jsonify({"errorCode": "ERR1", "message": "Pregunta frecuente no encontrada"}), 404
-        # Baja lógica + desasociar
+        # Baja lógica (no necesita desasociar ya que la FK está en preguntafrecuente)
         cur.execute("UPDATE preguntafrecuente SET fechaFin = NOW() WHERE idPreguntaFrecuente=%s", (id_faq,))
-        cur.execute("UPDATE carrerainstitucion SET idPreguntaFrecuente=NULL WHERE idCarreraInstitucion=%s", (id_ci,))
         conn.commit()
         return jsonify({"ok": True}), 200
     except Exception as e:
@@ -4567,19 +4558,16 @@ def _my_inst_id(conn, user_id:int):
 
 def _ci_belongs(conn, id_ci:int, id_inst:int):
     cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT 1 as exists FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s", (id_ci, id_inst))
+    cur.execute("SELECT * FROM carrerainstitucion WHERE idCarreraInstitucion=%s AND idInstitucion=%s", (id_ci, id_inst))
     return cur.fetchone() is not None
 
-# Listar material complementario de una carrera propia
+# Listar material complementario
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials', methods=['GET'])
 @token_required
 def materials_list(current_user_id:int, id_ci:int):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        id_inst = _my_inst_id(conn, current_user_id)
-        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
-            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """
@@ -4631,7 +4619,7 @@ def materials_create(current_user_id:int, id_ci:int):
         conn = mysql.connector.connect(**DB_CONFIG)
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
-            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
+            return jsonify({"errorCode":"ERR1","message":"Usted no está autorizado para realizar esta acción."}), 403
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """INSERT INTO contenidomultimedia (titulo, descripcion, enlace, fechaInicio, fechaFin, idCarreraInstitucion)
@@ -4667,11 +4655,8 @@ def materials_update(current_user_id:int, id_ci:int, id_mat:int):
         if enlace is not None and (not enlace or not re.match(r'^(https?://|/|[A-Za-z0-9._-]+)', enlace.strip())):
             return jsonify({"errorCode":"ERR2","message":"Debe adjuntar un archivo o ingresar un enlace válido."}), 400
         conn = mysql.connector.connect(**DB_CONFIG)
-        id_inst = _my_inst_id(conn, current_user_id)
-        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
-            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT 1 as exists FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        cur.execute("SELECT * FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
         if not cur.fetchone():
             return jsonify({"errorCode":"ERR1","message":"Material no encontrado"}), 404
         sets=[]; params=[]
@@ -4706,11 +4691,8 @@ def materials_delete(current_user_id:int, id_ci:int, id_mat:int):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
-        id_inst = _my_inst_id(conn, current_user_id)
-        if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
-            return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT 1 as exists FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
+        cur.execute("SELECT * FROM contenidomultimedia WHERE idContenidoMultimedia=%s AND idCarreraInstitucion=%s AND (fechaFin IS NULL OR fechaFin>NOW())", (id_mat, id_ci))
         if not cur.fetchone():
             return jsonify({"errorCode":"ERR4","message":"No se pudo eliminar el material complementario. Intente nuevamente."}), 404
         cur.execute("UPDATE contenidomultimedia SET fechaFin=NOW() WHERE idContenidoMultimedia=%s", (id_mat,))
@@ -4867,215 +4849,232 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
 
 
 # ============================ Realización de Test (US022) ============================
-# Implementación simplificada en memoria (
+# Tablas involucradas: test, estadotest, testaptitud, testcarrerainstitucion
+# -- Volcando estructura para tabla ovo.estadotest
+# CREATE TABLE IF NOT EXISTS `estadotest` (
+#   `idEstadoTest` int(11) NOT NULL AUTO_INCREMENT,
+#   `nombreEstadoTest` varchar(50) NOT NULL DEFAULT '',
+#   PRIMARY KEY (`idEstadoTest`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-_TEST_STORE = {}
-_TEST_SEQ = 1
+# -- Volcando datos para la tabla ovo.estadotest: ~2 rows (aproximadamente)
+# INSERT INTO `estadotest` (`idEstadoTest`, `nombreEstadoTest`) VALUES
+# 	(1, 'Activo'),
+# 	(2, 'Finalizado');
 
-def _detect_current_user_id_optional():
-    token=None
-    if 'Authorization' in request.headers:
-        parts = request.headers['Authorization'].split(' ')
-        if len(parts)==2 and parts[0].lower()=='bearer':
-            token=parts[1]
-    if not token:
-        return None
-    if token=="Hola":
-        return 1
-    try:
-        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return data.get('user_id')
-    except Exception:
-        return None
+# -- Volcando estructura para tabla ovo.test
+# CREATE TABLE IF NOT EXISTS `test` (
+#   `idTest` int(11) NOT NULL AUTO_INCREMENT,
+#   `idEstadoTest` int(11) NOT NULL,
+#   `idUsuario` int(11) UNSIGNED,
+#   `fechaTest` datetime NOT NULL DEFAULT current_timestamp(),
+#   `idChatIA` varchar(50) NOT NULL,
+#   `HistorialPreguntas` longtext DEFAULT NULL,
+#   PRIMARY KEY (`idTest`),
+#   KEY `FK_test_usuario` (`idUsuario`),
+#   KEY `FK_test_estadotest` (`idEstadoTest`),
+#   CONSTRAINT `FK_test_estadotest` FOREIGN KEY (`idEstadoTest`) REFERENCES `estadotest` (`idEstadoTest`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+#   CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-def _find_active_test_for_user(user_id):
-    for t in _TEST_STORE.values():
-        if t['user_id']==user_id and not t['finished'] and not t['abandoned']:
-            return t
-    return None
+# -- Volcando estructura para tabla ovo.testaptitud
+# CREATE TABLE IF NOT EXISTS `testaptitud` (
+#   `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
+#   `afinidadAptitud` double DEFAULT NULL,
+#   `idAptitud` int(11) DEFAULT NULL,
+#   `idTest` int(11) DEFAULT NULL,
+#   PRIMARY KEY (`idResultadoAptitud`),
+#   KEY `FK_testaptitud_aptitud` (`idAptitud`),
+#   KEY `FK_testaptitud_test` (`idTest`),
+#   CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+#   CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-def _create_test(user_id, accepted):
-    global _TEST_SEQ
-    tid = _TEST_SEQ
-    _TEST_SEQ += 1
-    now = datetime.datetime.utcnow()
-    obj = {
-        'id': tid,
-        'user_id': user_id,
-        'answers': [],
-        'total': 50,
-        'paused': False,
-        'finished': False,
-        'abandoned': False,
-        'disclaimerAccepted': accepted,
-        'created': now,
-        'lastUpdate': now
-    }
-    _TEST_STORE[tid]=obj
-    return obj
+# -- Volcando estructura para tabla ovo.testcarrerainstitucion
+# CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
+#   `afinidadCarrera` double DEFAULT NULL,
+#   `idTest` int(11) DEFAULT NULL,
+#   `idCarreraInstitucion` int(11) DEFAULT NULL,
+#   KEY `FK_testcarrerainstitucion_test` (`idTest`),
+#   KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
+#   CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON UPDATE CASCADE,
+#   CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+
+# Endpoint para iniciar test (genera registro en tabla 'test' y devuelve preguntas)
 @app.route('/api/v1/tests/start', methods=['POST'])
-def us022_test_start():
-    user_id = _detect_current_user_id_optional()
-    data = request.get_json(silent=True) or {}
-    accept = bool(data.get('acceptPolicies'))
-    existing = _find_active_test_for_user(user_id)
-    if existing:
-        if existing['user_id'] is None and not existing['disclaimerAccepted']:
-            return jsonify({
-                "disclaimer": True,
-                "message": "Debes aceptar las políticas de uso para continuar el test.",
-                "acceptPath": "/api/v1/tests/start"
-            }), 200
-        return jsonify({
-            "idTest": existing['id'],
-            "continuar": True,
-            "nextQuestion": f"Pregunta {len(existing['answers'])+1}",
-            "respondidas": len(existing['answers']),
-            "total": existing['total']
-        }), 200
-    if user_id is None and not accept:
-        temp = _create_test(None, False)
-        return jsonify({
-            "disclaimer": True,
-            "message": "Debes aceptar las políticas de uso para iniciar el test.",
-            "acceptPath": "/api/v1/tests/start",
-            "cancelInfo": {"message": "Si cancelas no podrás continuar ahora."},
-            "tempTestId": temp['id']
-        }), 200
-    t = _create_test(user_id, True if user_id is not None else accept)
-    return jsonify({
-        "idTest": t['id'],
-        "nextQuestion": "Pregunta 1",
-        "respondidas": 0,
-        "total": t['total']
-    }), 201
-
-@app.route('/api/v1/tests/<int:id_test>/answer', methods=['POST'])
-def us022_test_answer(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if t['finished']:
-        return jsonify({"message":"Test ya finalizado"}), 400
-    if t['paused']:
-        return jsonify({"message":"Test pausado"}), 400
-    data = request.get_json(silent=True) or {}
-    ans = (data.get('answer') or '').strip()
-    if not ans:
-        return jsonify({"errorCode":"ERR1","message":"Respuesta vacía"}), 400
-    if data.get('triggerSaveError'):
-        return jsonify({"errorCode":"ERR1","message":"Error al guardar la respuesta. Reintente."}), 500
+def tests_start():
+    # Obtener el token si existe en el header Authorization
+    auth_header = request.headers.get('Authorization')
+    current_user_id = None
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            current_user_id = payload.get('user_id')
+        except jwt.ExpiredSignatureError:
+            pass
+    conn = None
     try:
-        t['answers'].append(ans)
-        t['lastUpdate']=datetime.datetime.utcnow()
-    except Exception:
-        return jsonify({"errorCode":"ERR1","message":"Error al guardar la respuesta. Reintente."}), 500
-    if len(t['answers']) >= t['total']:
-        t['finished']=True
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        
+        # Obtener el estado "Activo"
+        cur.execute("SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest='Activo' LIMIT 1")
+        estadoActivo = cur.fetchone()
+        if not estadoActivo:
+            return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
+        id_estado_activo = estadoActivo['idEstadoTest']
+
+        # Crear nuevo test llamando a generar un ID unico complejo para enviar a la IA
+        unique_chat_id = str(uuid.uuid4())
+        cur.execute("INSERT INTO test (idEstadoTest, idUsuario, fechaTest, idChatIA) VALUES (%s, NULL, NOW(), %s)", (id_estado_activo, unique_chat_id))
+        cur.execute("SELECT LAST_INSERT_ID() as id")
+        idTest = cur.fetchone()['id']
+
+        # Obtener el chatIdIA generado
+        cur.execute("SELECT idChatIA FROM test WHERE idTest = %s", (idTest,))
+        chatIdIA = cur.fetchone()['idChatIA']
+
+        # Enviar al endpoint para obtener preguntas:
+        # curl --location 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat' \
+        # --header 'content-type: application/json' \
+        # --data '{
+        #     "UserID": "15",
+        #     "prompt": "bien",
+        #     "ChatID": "2"
+        # }'
+
+        # RESPONSE:
+
+        # {
+        #     "chatbot_response": "Bienvenido al Cuestionario Vocacional. Mi función es ayudarte a descubrir tus aptitudes y áreas de interés. Responde a las siguientes preguntas con sinceridad para obtener un análisis final. Empecemos:\n\n**Pregunta 1:** ¿Cómo describirías tus habilidades de ventas y orientación al cliente?",
+        #     "chat_id": "2",
+        #     "status": "Waiting for Q2",
+        #     "full_history": [
+        #         "Asistente: Bienvenido al Cuestionario Vocacional. Mi función es ayudarte a descubrir tus aptitudes y áreas de interés. Responde a las siguientes preguntas con sinceridad para obtener un análisis final. Empecemos:\n\n**Pregunta 1:** ¿Cómo describirías tus habilidades de ventas y orientación al cliente?"
+        #     ]
+        # }
+
+        # Enviar la solicitud al endpoint externo
+        external_api_url = 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat'
+        if current_user_id:
+            payload = {
+                "UserID": str(current_user_id),
+                "prompt": "bien",
+                "ChatID": str(chatIdIA)
+            }
+        else:
+            payload = {
+                "UserID": None,
+                "prompt": "bien",
+                "ChatID": str(chatIdIA)
+            }
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.post(external_api_url, json=payload, headers=headers)
+        if response.status_code != 200:
+            return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
+
+        # Guardar el full_history en la tabla test
+        cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(response.json().get("full_history", []), ensure_ascii=False), idTest))
+        conn.commit()
+
         return jsonify({
-            "completed": True,
-            "message": "Has completado el test. Puedes ver los resultados.",
-            "resultPath": f"/api/v1/tests/{t['id']}/finish"
+            "idTest": int(idTest),
+            "chatId": idTest,
+            "chatIdIA": chatIdIA
+        }), 201
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception as e:
+            pass
+
+# Endpoint para enviar enviar respuesta de una pregunta y obtener la siguiente
+@app.route('/api/v1/tests/<int:id_test>/answer', methods=['POST'])
+def tests_answer(id_test:int):
+    # Obtener el token si existe en el header Authorization
+    auth_header = request.headers.get('Authorization')
+    current_user_id = None
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            current_user_id = payload.get('user_id')
+        except jwt.ExpiredSignatureError:
+            pass
+    data = request.get_json(silent=True) or {}
+    chatId = data.get('chatId')
+    answer = data.get('answer')
+    if chatId is None or answer is None or not isinstance(chatId,int) or not isinstance(answer,str) or answer.strip() == '':
+        return jsonify({"errorCode":"ERR1","message":"Datos inválidos"}), 400
+
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Validar que el test exista y esté activo
+        cur.execute("SELECT t.idTest, t.idChatIA FROM test t JOIN estadotest et ON et.idEstadoTest = t.idEstadoTest WHERE t.idTest = %s AND et.nombreEstadoTest='Activo' LIMIT 1", (id_test,))
+        test_row = cur.fetchone()
+
+        if not test_row:
+            return jsonify({"errorCode":"ERR1","message":"Test no encontrado o inactivo."}), 404
+        chatIdIA = test_row['idChatIA']
+
+        # Enviar la respuesta al endpoint externo
+        external_api_url = 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat'
+        if current_user_id:
+            payload = {
+                "UserID": str(current_user_id),
+                "prompt": answer.strip(),
+                "ChatID": str(chatIdIA)
+            }
+        else:
+            payload = {
+                "UserID": None,
+                "prompt": answer.strip(),
+                "ChatID": str(chatIdIA)
+            }
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.post(external_api_url, json=payload, headers=headers)
+        if response.status_code != 200:
+            return jsonify({"errorCode":"ERR1","message":"No se pudo enviar la respuesta. Intente nuevamente."}), 500
+        
+        resp_json = response.json()
+        full_history = resp_json.get("full_history")
+        next_question = resp_json.get("chatbot_response")
+        status = resp_json.get("status")
+        if not full_history or not isinstance(full_history,list) or not next_question or not isinstance(next_question,str) or next_question.strip() == '':
+            return jsonify({"errorCode":"ERR1","message":"No se pudo enviar la respuesta. Intente nuevamente."}), 500
+        
+        # Guardar el full_history en la tabla test
+        cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(full_history, ensure_ascii=False), id_test))
+        conn.commit()
+        return jsonify({
+            "nextQuestion": next_question,
+            "fullHistory": full_history
         }), 200
-    return jsonify({
-        "ok": True,
-        "nextQuestion": f"Pregunta {len(t['answers'])+1}",
-        "respondidas": len(t['answers']),
-        "total": t['total']
-    }), 200
 
-@app.route('/api/v1/tests/<int:id_test>/progress', methods=['GET'])
-def us022_test_progress(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    return jsonify({
-        "idTest": t['id'],
-        "respondidas": len(t['answers']),
-        "total": t['total'],
-        "paused": t['paused'],
-        "finished": t['finished'],
-        "abandoned": t['abandoned']
-    }), 200
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo enviar la respuesta. Intente nuevamente."}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception as e:
+            pass
 
-@app.route('/api/v1/tests/<int:id_test>/pause', methods=['POST'])
-def us022_test_pause(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if t['finished']:
-        return jsonify({"message":"Test ya finalizado"}), 400
-    t['paused']=True
-    return jsonify({
-        "paused": True,
-        "message": "Test pausado. Progreso guardado.",
-        "resumePath": f"/api/v1/tests/{id_test}/resume",
-        "saveExitPath": f"/api/v1/tests/{id_test}/save-exit"
-    }), 200
-
-@app.route('/api/v1/tests/<int:id_test>/resume', methods=['POST'])
-def us022_test_resume(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if t['finished']:
-        return jsonify({"message":"Test ya finalizado"}), 400
-    t['paused']=False
-    return jsonify({
-        "paused": False,
-        "nextQuestion": f"Pregunta {len(t['answers'])+1}",
-        "respondidas": len(t['answers']),
-        "total": t['total']
-    }), 200
-
-@app.route('/api/v1/tests/<int:id_test>/save-exit', methods=['POST'])
-def us022_test_save_exit(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if t['finished']:
-        return jsonify({"message":"Test ya finalizado"}), 400
-    t['paused']=True
-    return jsonify({"ok":True, "message":"Progreso guardado. Podrás continuar más tarde."}), 200
-
-@app.route('/api/v1/tests/<int:id_test>/abandon', methods=['POST'])
-def us022_test_abandon(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if t['finished']:
-        return jsonify({"message":"Test ya finalizado"}), 400
-    t['abandoned']=True
-    t['answers']=[]
-    return jsonify({"ok":True, "message":"Test abandonado y respuestas eliminadas."}), 200
-
-@app.route('/api/v1/tests/<int:id_test>/finish', methods=['POST'])
-def us022_test_finish(id_test:int):
-    t = _TEST_STORE.get(id_test)
-    if not t or t['abandoned']:
-        return jsonify({"errorCode":"ERR1","message":"Test no encontrado"}), 404
-    if not t['finished']:
-        if len(t['answers']) < t['total']:
-            return jsonify({"message":"Aún no completaste todas las preguntas."}), 400
-        t['finished']=True
-    import random as _r
-    aptitudes=[{"nombre":f"Aptitud {i}","puntaje":_r.randint(10,99)} for i in range(1,7)]
-    aptitudes.sort(key=lambda x: x['puntaje'], reverse=True)
-    carreras=[{"carrera":f"Carrera {i}","afinidad":_r.randint(50,100)} for i in range(1,6)]
-    carreras.sort(key=lambda x: x['afinidad'], reverse=True)
-    return jsonify({
-        "idTest": t['id'],
-        "resumen": "Test completado. Estos son tus resultados simulados.",
-        "aptitudes": aptitudes,
-        "carreras": carreras,
-        "volverInicioPath": "/api/v1/tests/start"
-    }), 200
-
-
-# ============================ Tablero de Estadísticas (US023) ============================
-# Filtros comunes: from=YYYY-MM-DD, to=YYYY-MM-DD (requeridos), provinceId (opcional)
-# Validaciones: to <= hoy, from <= to. Caso inválido -> ERR1.
 # Si no hay datos en ninguna métrica solicitada del tablero -> ERR1 (mensaje pedir cambiar filtros).
 # Permiso requerido: ADMIN_PANEL.
 # Limitaciones: Algunas métricas no pueden calcularse por ausencia de columnas (ej: fecha en test / compatibilidades), se devuelven listas vacías.
@@ -6593,8 +6592,9 @@ def _tipo_carrera_exists_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-types', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
-def admin_career_types_list(current_user_id):
+# @requires_permission('ADMIN_PANEL')
+# def admin_career_types_list(current_user_id):
+def admin_career_types_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -8630,7 +8630,7 @@ def admin_action_type_delete(current_user_id, id_tipo):
 #   ERR2: "No se pudo eliminar el estado de institución. Intente nuevamente." (error técnico o inexistente)
 
 def _estado_institucion_duplicate_active(cur, nombre, exclude_id=None):
-    q = "SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion=%s AND fechaFin IS NULL"
+    q = "SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion=%s"
     params = [nombre]
     if exclude_id:
         q += " AND idEstadoInstitucion<>%s"
@@ -8645,7 +8645,7 @@ def admin_institution_states_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion WHERE fechaFin IS NULL ORDER BY nombreEstadoInstitucion")
+        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion FROM estadoinstitucion ORDER BY nombreEstadoInstitucion")
         rows = cur.fetchall() or []
         return jsonify({'institutionStates': rows}), 200
     except Exception as e:
@@ -8688,7 +8688,7 @@ def admin_institution_state_detail(current_user_id, id_estado):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion WHERE idEstadoInstitucion=%s", (id_estado,))
+        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion FROM estadoinstitucion WHERE idEstadoInstitucion=%s", (id_estado,))
         row = cur.fetchone()
         if not row:
             return jsonify({'errorCode':'ERR1','message':'Estado de institución no encontrado.'}), 404
