@@ -458,7 +458,7 @@ def whoami(current_user_id):
 
 # Endpoint para listar todos los usuarios
 @app.route('/api/v1/admin/users', methods=['GET'])
-@requires_permission('LIST_USERS')
+@requires_permission('MANAGE_PROFILE')
 def admin_list_users(current_user_id):
     """Listado de usuarios con sus grupos activos."""
     conn = None
@@ -508,7 +508,7 @@ def admin_list_users(current_user_id):
 
 # Endpoint para listar todos los grupos
 @app.route('/api/v1/admin/groups', methods=['GET'])
-@requires_permission('LIST_GROUPS')
+@requires_permission('MANAGE_PROFILE')
 def admin_list_groups(current_user_id):
     conn = None
     try:
@@ -537,7 +537,7 @@ def admin_list_groups(current_user_id):
 
 # Endpoint para obtener grupos de un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/groups', methods=['GET'])
-@requires_permission('EDIT_USERS')
+@requires_permission('MANAGE_PROFILE')
 def admin_get_user_groups(current_user_id, user_id: int):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -567,7 +567,7 @@ def admin_get_user_groups(current_user_id, user_id: int):
 
 # Endpoint para obtener todos los permisos de un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['GET'])
-@requires_permission('USER_PERMS')
+@requires_permission('MANAGE_PROFILE')
 def admin_get_user_permissions(current_user_id, user_id: int):
     conn = None
     try:
@@ -639,7 +639,7 @@ def admin_get_user_permissions(current_user_id, user_id: int):
 
 # Endpoint para asignar un grupo a un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/group', methods=['PUT'])
-@requires_permission('USER_PERMS')
+@requires_permission('MANAGE_PROFILE')
 def admin_set_user_group(current_user_id, user_id: int):
     """Asigna un grupo al usuario sin cerrar asignaciones previas.
     Si ya pertenece (activo) al grupo, devolver error ERR1.
@@ -687,7 +687,7 @@ def admin_set_user_group(current_user_id, user_id: int):
 
 # Endpoint para eliminar el grupo de un usuario (actualizar fechaFin)
 @app.route('/api/v1/admin/users/<int:user_id>/group/<int:id_grupo>', methods=['DELETE'])
-@requires_permission('USER_PERMS')
+@requires_permission('MANAGE_PROFILE')
 def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
     """Elimina un grupo de un usuario (actualiza fechaFin)."""
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -714,7 +714,7 @@ def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
 
 # Endpoint para agregar un permiso a un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['POST'])
-@requires_permission('USER_PERMS')
+@requires_permission('MANAGE_PROFILE')
 def admin_add_user_permission(current_user_id, user_id: int):
     """Agrega un permiso directo. Si ya existe activo, no duplica."""
     data = request.get_json(silent=True) or {}
@@ -756,7 +756,7 @@ def admin_add_user_permission(current_user_id, user_id: int):
 
 # Endpoint para eliminar un permiso directo de un usuario
 @app.route('/api/v1/admin/users/<int:user_id>/permissions/<int:id_permiso>', methods=['DELETE'])
-@requires_permission('USER_PERMS')
+@requires_permission('MANAGE_PROFILE')
 def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -789,7 +789,7 @@ def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int)
 
 # Endpoint para eliminar a un usuario (cambiar a estado Baja)
 @app.route('/api/v1/admin/users/<int:user_id>', methods=['DELETE'])
-@requires_permission('EDIT_USERS')
+@requires_permission('MANAGE_PROFILE')
 def admin_delete_user(current_user_id, user_id: int):
     """Elimina a un usuario cambiando su estado a 'Baja'."""
     conn = None
@@ -832,7 +832,7 @@ def admin_delete_user(current_user_id, user_id: int):
 
 # Endpoint para listar todos los permisos disponibles
 @app.route('/api/v1/admin/permissions', methods=['GET'])
-@requires_permission('LIST_PERMS')
+@requires_permission('ASIGN_PERM')
 def admin_list_permissions(current_user_id):
     """Lista de permisos disponibles. Soporta filtro ?search= término."""
     conn = None
@@ -864,7 +864,7 @@ def admin_list_permissions(current_user_id):
 
 # Endpoint para reemplazar permisos de un usuario (quitar y agregar)
 @app.route('/api/v1/admin/users/<int:user_id>/permissions', methods=['PUT'])
-@requires_permission('USER_PERMS')
+@requires_permission('ASIGN_PERM')
 def admin_set_user_permissions_bulk(current_user_id, user_id: int):
     """Reemplaza el conjunto de permisos directos activos de un usuario por los provistos.
        Reglas:
@@ -943,7 +943,7 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
 
 # Endpoint para obtener el historial de accesos
 @app.route('/api/v1/admin/access-history', methods=['GET'])
-@requires_permission('USER_HISTORY')
+@requires_permission('ACCESS_HISTORY')
 def admin_access_history(current_user_id):
     """Listado del historial de accesos con filtros.
     Filtros opcionales (query params):
@@ -1085,7 +1085,7 @@ def admin_access_history(current_user_id):
 
 # Endpoint para exportar el historial de accesos
 @app.route('/api/v1/admin/access-history/export', methods=['GET'])
-@requires_permission('USER_HISTORY')
+@requires_permission('ACCESS_HISTORY')
 def admin_access_history_export(current_user_id):
     """Exporta el historial de accesos en CSV o PDF (si disponible). Usa los mismos filtros que la lista.
     Query: format=csv|pdf
@@ -1324,7 +1324,7 @@ def admin_access_history_export(current_user_id):
 
 # Endpoint para obtener el historial de auditoría
 @app.route('/api/v1/admin/audit', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('AUDIT_HISTORY')
 def admin_audit_list(current_user_id):
     """Listado de auditoría (historial ABM) con filtros.
     Filtros opcionales (query params):
@@ -1525,7 +1525,7 @@ def admin_audit_list(current_user_id):
 
 # Endpoint para exportar el historial de auditoría
 @app.route('/api/v1/admin/audit/export', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('AUDIT_HISTORY')
 def admin_audit_export(current_user_id):
     """Exporta la auditoría en CSV o PDF. Usa los mismos filtros que el listado.
     Query: format=csv|pdf
@@ -2074,7 +2074,7 @@ def verify_email():
 
 # Endpoint para dar de baja lógica al usuario
 @app.route('/api/v1/auth/deactivate', methods=['POST'])
-@token_required
+@requires_permission("USER_DEACTIVATE_SELF")
 def deactivate_current_user(current_user_id):
     """Da de baja lógicamente al usuario autenticado.
     Regla: Cierra cualquier estado activo en usuarioestado y crea un nuevo estado BAJA.
@@ -2300,14 +2300,13 @@ def user_list_interests(current_user_id):
         cur.execute(
             """
             SELECT iuc.idCarreraInstitucion,
-                   COALESCE(c.nombreCarrera, ci.nombreCarrera) AS nombreCarrera,
+                   ci.nombreCarrera AS nombreCarreraInstitucion,
                    inst.nombreInstitucion
             FROM interesusuariocarrera iuc
             JOIN carrerainstitucion ci ON ci.idCarreraInstitucion = iuc.idCarreraInstitucion
-            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
             LEFT JOIN institucion inst ON inst.idInstitucion = ci.idInstitucion
             WHERE iuc.idUsuario = %s AND (iuc.fechaFin IS NULL OR iuc.fechaFin > NOW())
-            ORDER BY nombreCarrera, inst.nombreInstitucion
+            ORDER BY ci.nombreCarrera, inst.nombreInstitucion
             """,
             (current_user_id,)
         )
@@ -2317,7 +2316,7 @@ def user_list_interests(current_user_id):
         data = [
             {
                 "idCarreraInstitucion": r.get('idCarreraInstitucion'),
-                "nombreCarrera": r.get('nombreCarrera'),
+                "nombreCarreraInstitucion": r.get('nombreCarreraInstitucion'),
                 "nombreInstitucion": r.get('nombreInstitucion'),
             }
             for r in rows
@@ -2526,7 +2525,8 @@ def user_test_access(current_user_id, id_test: int):
 # - Si está autenticado con JWT válido y se puede extraer user_id: se valida que el test pertenezca al usuario.
 # - Si está autenticado con el token de prueba "Hola": se considera autenticado pero no se valida pertenencia.
 @app.route('/api/v1/user/tests/<int:id_test>/result', methods=['GET'])
-def user_test_result(id_test: int):
+@requires_permission("USER_VIEW_TEST_RESULT")
+def user_test_result(current_user_id, id_test: int):
     # Importaciones perezosas para no afectar otras partes del archivo
     try:
         import mysql.connector  # type: ignore
@@ -2717,7 +2717,8 @@ def user_test_result(id_test: int):
 # - Idempotente: si no hay test en curso, responde ok true.
 # - Error: ERR1 "Error al reiniciar cuestionario, intente más tarde".
 @app.route('/api/v1/user/tests/restart', methods=['POST'])
-def user_restart_test():
+@requires_permission("USER_RESTART_TEST")
+def user_restart_test(current_user_id):
     try:
         import mysql.connector  # type: ignore
         import jwt  # type: ignore
@@ -2856,6 +2857,7 @@ def user_restart_test():
 
 # Lista de carreras con búsqueda opcional (?search=)
 @app.route('/api/v1/careers', methods=['GET'])
+@requires_permission("USER_VIEW_CAREERS")
 def careers_list():
     conn = None
     try:
@@ -2884,7 +2886,6 @@ def careers_list():
             {
                 "idCarrera": r.get('idCarrera'),
                 "nombre": r.get('nombreCarrera'),
-                "cantidadInstituciones": int(r.get('cantidadInstituciones') or 0),
                 "institucionesPath": f"/api/v1/careers/{r.get('idCarrera')}/institutions",
             }
             for r in rows
@@ -2900,8 +2901,60 @@ def careers_list():
         except Exception:
             pass
 
+# Consultar carreraInstitucion
+@app.route('/api/v1/career/institutions', methods=['GET'])
+@requires_permission("USER_VIEW_CAREERS")
+def careers_institutions():
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT ci.idCarreraInstitucion,
+                   ci.tituloCarrera,
+                   ci.nombreCarrera AS nombreCarreraCI,
+                   ci.montoCuota,
+                   m.nombreModalidad,
+                   i.idInstitucion,
+                   i.nombreInstitucion,
+                   i.urlLogo
+            FROM carrerainstitucion ci
+            LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion
+            LEFT JOIN modalidadcarrerainstitucion m ON m.idModalidadCarreraInstitucion = ci.idModalidadCarreraInstitucion
+            WHERE (ci.fechaFin IS NULL OR ci.fechaFin > NOW())
+            ORDER BY i.nombreInstitucion, ci.tituloCarrera
+        """)
+        rows = cur.fetchall() or []
+        data = []
+        for r in rows:
+            data.append({
+                "idCarreraInstitucion": r.get('idCarreraInstitucion'),
+                "nombreInstitucion": r.get('nombreInstitucion'),
+                "urlLogo": r.get('urlLogo'),
+                "tituloCarrera": r.get('tituloCarrera'),
+                "nombreCarrera": r.get('nombreCarreraCI'),
+                "modalidad": r.get('nombreModalidad'),
+                "montoCuota": float(r.get('montoCuota') or 0),
+                "detailPath": f"/api/v1/careers/{r.get('idCarreraInstitucion')}/institutions/{r.get('idInstitucion')}",
+                "aliasPath": f"/api/v1/careers/{r.get('idCarreraInstitucion')}",
+                "meInteresaPath": f"/api/v1/careers/{r.get('idCarreraInstitucion')}/interest",
+            })
+        return jsonify(data), 200
+    except Exception as e:
+        log(f"/careers/institutions GET error: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "Error al consultar instituciones de la carrera"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+# Curl ejemplo:
+    # curl -X GET "{{baseURL}}/api/v1/careers/1/institutions" -H "accept: application/json"
+
 # Instituciones que dictan una carrera
 @app.route('/api/v1/careers/<int:id_carrera>/institutions', methods=['GET'])
+@requires_permission("USER_VIEW_CAREERS")
 def career_institutions(id_carrera: int):
     conn = None
     try:
@@ -2970,6 +3023,7 @@ def career_institutions(id_carrera: int):
 
 # Detalle de una carrera en institución (ruta completa con carrera)
 @app.route('/api/v1/careers/<int:id_carrera>/institutions/<int:id_ci>', methods=['GET'])
+@requires_permission("USER_VIEW_CAREERS")
 def career_institution_detail(id_carrera: int, id_ci: int):
     conn = None
     try:
@@ -3005,17 +3059,17 @@ def career_institution_detail(id_carrera: int, id_ci: int):
         )
         multimedia = cur.fetchall() or []
 
-        # Pregunta frecuente asociada (si la hay)
-        faq = None
+        # Preguntas frecuentes asociadas
         cur.execute(
             """
             SELECT idPreguntaFrecuente, nombrePregunta, respuesta
             FROM preguntafrecuente
-            WHERE idPreguntaFrecuente = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+            WHERE idCarreraInstitucion = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+            ORDER BY idPreguntaFrecuente
             """,
             (id_ci,)
         )
-        faq = cur.fetchone()
+        faq = cur.fetchall() or []
 
         detalle = {
             "carreraInstitucion": {
@@ -3038,7 +3092,7 @@ def career_institution_detail(id_carrera: int, id_ci: int):
                 "urlLogo": ci.get('urlLogo'),
                 "direccion": ci.get('direccion'),
             },
-            "preguntaFrecuente": faq,
+            "preguntasFrecuentes": faq,
             "multimedia": multimedia,
             "acciones": {
                 "meInteresaPath": f"/api/v1/careers/{ci.get('idCarreraInstitucion')}/interest"
@@ -3057,6 +3111,7 @@ def career_institution_detail(id_carrera: int, id_ci: int):
 
 # Alias: detalle por idCarreraInstitucion (compatibilidad con US012 consultarCarreraPath)
 @app.route('/api/v1/careers/<int:id_ci>', methods=['GET'])
+@requires_permission("USER_VIEW_CAREERS")
 def career_institution_detail_alias(id_ci: int):
     conn = None
     try:
@@ -3091,17 +3146,17 @@ def career_institution_detail_alias(id_ci: int):
         )
         multimedia = cur.fetchall() or []
 
-        # Pregunta frecuente asociada (si la hay)
-        faq = None
+        # Preguntas frecuentes asociadas
         cur.execute(
             """
             SELECT idPreguntaFrecuente, nombrePregunta, respuesta
             FROM preguntafrecuente
-            WHERE idPreguntaFrecuente = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+            WHERE idCarreraInstitucion = %s AND (fechaFin IS NULL OR fechaFin > NOW())
+            ORDER BY idPreguntaFrecuente
             """,
             (id_ci,)
         )
-        faq = cur.fetchone()
+        faq = cur.fetchall() or []
 
         detalle = {
             "carreraInstitucion": {
@@ -3124,7 +3179,7 @@ def career_institution_detail_alias(id_ci: int):
                 "urlLogo": ci.get('urlLogo'),
                 "direccion": ci.get('direccion'),
             },
-            "preguntaFrecuente": faq,
+            "preguntasFrecuentes": faq,
             "multimedia": multimedia,
             "acciones": {
                 "meInteresaPath": f"/api/v1/careers/{ci.get('idCarreraInstitucion')}/interest"
@@ -3254,6 +3309,7 @@ def careers_unmark_interest(current_user_id: int, id_ci: int):
 
 # Lista de instituciones con filtros: ?search=, ?tipo=, ?tipoId=, ?localidad=, ?provincia=, ?pais=
 @app.route('/api/v1/institutions', methods=['GET'])
+@requires_permission("USER_VIEW_INSTITUTIONS")
 def institutions_list():
     conn = None
     try:
@@ -3359,11 +3415,47 @@ def institutions_list():
 
 # Detalle de institución con sus carreras disponibles
 @app.route('/api/v1/institutions/<int:id_institucion>', methods=['GET'])
+@requires_permission("USER_VIEW_INSTITUTIONS")
 def institution_detail(id_institucion: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
+
+        # Verificar si el usuario que esta haciendo la request es el dueño de la institucion
+        # Obtener autorization header
+        auth_header = request.headers.get('Authorization', '') or ''
+        token = None
+        if auth_header.startswith('Bearer '):
+            token = auth_header[len('Bearer '):].strip()
+        is_owner = False
+        user_id = None
+
+
+        # Verificar si el token es válido y obtener el id del usuario
+        # print("token", token)
+        if token:
+            try:
+                payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+                user_id = payload.get('user_id')
+                if user_id:
+                    # Verificar si el usuario es dueño de la institución
+                    cur.execute("SELECT COUNT(*) FROM institucion WHERE idUsuario = %s",
+                                (user_id,))
+                    is_owner = cur.fetchone().get('COUNT(*)', 0) > 0
+            except jwt.ExpiredSignatureError:
+                pass
+            except jwt.InvalidTokenError:
+                pass
+
+        if is_owner:
+            cur.execute("SELECT * FROM institucion WHERE idUsuario = %s", (user_id,))
+            # print(cur.fetchone())
+            id_institucion = cur.fetchone().get('idInstitucion')
+            if not id_institucion:
+                return jsonify({"errorCode": "ERR1", "message": "No existe institución con esos filtros"}), 404
+        
+        print("id_institucion", id_institucion)
 
         # Datos de la institución
         cur.execute(
@@ -3778,7 +3870,7 @@ def institutions_registration_submit():
 
 # Endpoint para aproba una institucion creando un usuario para administrarla y enviando un correo con los datos de acceso del usuario
 @app.route('/api/v1/institutions/registration/approve/<int:id_institucion>', methods=['POST'])
-@token_required
+@requires_permission("ADMIN_APPROVE_INSTITUTION")
 def create_user_and_send_mail(current_user_id: int, id_institucion: int):
     conn = None
     try:
@@ -3942,7 +4034,7 @@ def _get_my_institution_id(conn, current_user_id: int):
 
 # Listar carreras asociadas a mi institución
 @app.route('/api/v1/institutions/me/careers', methods=['GET'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS")
 def my_institution_careers(current_user_id: int):
     conn = None
     try:
@@ -4012,7 +4104,7 @@ def my_institution_careers(current_user_id: int):
 
 # Opciones para agregar/editar carrera (catálogo base y modalidades)
 @app.route('/api/v1/institutions/me/careers/options', methods=['GET'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS")
 def my_institution_careers_options(current_user_id: int):
     conn = None
     try:
@@ -4068,7 +4160,7 @@ def my_institution_careers_options(current_user_id: int):
 
 # Agregar carrera a mi institución
 @app.route('/api/v1/institutions/me/careers', methods=['POST'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS")
 def my_institution_careers_add(current_user_id: int):
     conn = None
     try:
@@ -4199,7 +4291,7 @@ def my_institution_careers_add(current_user_id: int):
 
 # Editar carrera de mi institución
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>', methods=['PUT'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS")
 def my_institution_careers_edit(current_user_id: int, id_ci: int):
     conn = None
     try:
@@ -4329,7 +4421,7 @@ def my_institution_careers_edit(current_user_id: int, id_ci: int):
 
 # Eliminar (desactivar) carrera de mi institución
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>', methods=['DELETE'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS")
 def my_institution_careers_delete(current_user_id: int, id_ci: int):
     conn = None
     try:
@@ -4391,7 +4483,7 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
 
 # Listar FAQs de una carrera-institución (0 o más)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs', methods=['GET'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_FAQS")
 def my_institution_career_faq_get(current_user_id: int, id_ci: int):
     conn = None
     try:
@@ -4427,7 +4519,7 @@ def my_institution_career_faq_get(current_user_id: int, id_ci: int):
 
 # Crear FAQ (si ya existe, error)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs', methods=['POST'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_FAQS")
 def my_institution_career_faq_create(current_user_id: int, id_ci: int):
     conn = None
     try:
@@ -4460,7 +4552,7 @@ def my_institution_career_faq_create(current_user_id: int, id_ci: int):
 
 # Actualizar FAQ existente
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs/<int:id_faq>', methods=['PUT'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_FAQS")
 def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: int):
     conn = None
     try:
@@ -4511,7 +4603,7 @@ def my_institution_career_faq_update(current_user_id: int, id_ci: int, id_faq: i
 
 # Eliminar FAQ (baja lógica)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/faqs/<int:id_faq>', methods=['DELETE'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_FAQS")
 def my_institution_career_faq_delete(current_user_id: int, id_ci: int, id_faq: int):
     conn = None
     try:
@@ -4563,7 +4655,7 @@ def _ci_belongs(conn, id_ci:int, id_inst:int):
 
 # Listar material complementario
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials', methods=['GET'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_COMPLEMENTARY_MATERIAL")
 def materials_list(current_user_id:int, id_ci:int):
     conn=None
     try:
@@ -4603,7 +4695,7 @@ def materials_list(current_user_id:int, id_ci:int):
 
 # Crear material complementario
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials', methods=['POST'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_COMPLEMENTARY_MATERIAL")
 def materials_create(current_user_id:int, id_ci:int):
     conn=None
     try:
@@ -4641,7 +4733,7 @@ def materials_create(current_user_id:int, id_ci:int):
 
 # Editar material complementario
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials/<int:id_mat>', methods=['PUT'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_COMPLEMENTARY_MATERIAL")
 def materials_update(current_user_id:int, id_ci:int, id_mat:int):
     conn=None
     try:
@@ -4686,7 +4778,7 @@ def materials_update(current_user_id:int, id_ci:int, id_mat:int):
 
 # Eliminar material complementario (baja lógica fechaFin)
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/materials/<int:id_mat>', methods=['DELETE'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_COMPLEMENTARY_MATERIAL")
 def materials_delete(current_user_id:int, id_ci:int, id_mat:int):
     conn=None
     try:
@@ -4732,7 +4824,7 @@ def _get_base_carrera_id(conn, id_ci:int):
     return r['idCarrera'] if r else None
 
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/aptitudes', methods=['GET'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS_APTITUDES")
 def career_aptitudes_list(current_user_id:int, id_ci:int):
     conn=None
     try:
@@ -4776,7 +4868,7 @@ def career_aptitudes_list(current_user_id:int, id_ci:int):
         except Exception: pass
 
 @app.route('/api/v1/institutions/me/careers/<int:id_ci>/aptitudes', methods=['PUT'])
-@token_required
+@requires_permission("INSTITUTION_MANAGE_CAREERS_APTITUDES")
 def career_aptitudes_save(current_user_id:int, id_ci:int):
     conn=None
     try:
@@ -4847,60 +4939,8 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
         except Exception: pass
 
 
-
 # ============================ Realización de Test (US022) ============================
 # Tablas involucradas: test, estadotest, testaptitud, testcarrerainstitucion
-# -- Volcando estructura para tabla ovo.estadotest
-# CREATE TABLE IF NOT EXISTS `estadotest` (
-#   `idEstadoTest` int(11) NOT NULL AUTO_INCREMENT,
-#   `nombreEstadoTest` varchar(50) NOT NULL DEFAULT '',
-#   PRIMARY KEY (`idEstadoTest`)
-# ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-# -- Volcando datos para la tabla ovo.estadotest: ~2 rows (aproximadamente)
-# INSERT INTO `estadotest` (`idEstadoTest`, `nombreEstadoTest`) VALUES
-# 	(1, 'Activo'),
-# 	(2, 'Finalizado');
-
-# -- Volcando estructura para tabla ovo.test
-# CREATE TABLE IF NOT EXISTS `test` (
-#   `idTest` int(11) NOT NULL AUTO_INCREMENT,
-#   `idEstadoTest` int(11) NOT NULL,
-#   `idUsuario` int(11) UNSIGNED,
-#   `fechaTest` datetime NOT NULL DEFAULT current_timestamp(),
-#   `idChatIA` varchar(50) NOT NULL,
-#   `HistorialPreguntas` longtext DEFAULT NULL,
-#   PRIMARY KEY (`idTest`),
-#   KEY `FK_test_usuario` (`idUsuario`),
-#   KEY `FK_test_estadotest` (`idEstadoTest`),
-#   CONSTRAINT `FK_test_estadotest` FOREIGN KEY (`idEstadoTest`) REFERENCES `estadotest` (`idEstadoTest`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-#   CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
-# ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-# -- Volcando estructura para tabla ovo.testaptitud
-# CREATE TABLE IF NOT EXISTS `testaptitud` (
-#   `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
-#   `afinidadAptitud` double DEFAULT NULL,
-#   `idAptitud` int(11) DEFAULT NULL,
-#   `idTest` int(11) DEFAULT NULL,
-#   PRIMARY KEY (`idResultadoAptitud`),
-#   KEY `FK_testaptitud_aptitud` (`idAptitud`),
-#   KEY `FK_testaptitud_test` (`idTest`),
-#   CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
-#   CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
-# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-# -- Volcando estructura para tabla ovo.testcarrerainstitucion
-# CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
-#   `afinidadCarrera` double DEFAULT NULL,
-#   `idTest` int(11) DEFAULT NULL,
-#   `idCarreraInstitucion` int(11) DEFAULT NULL,
-#   KEY `FK_testcarrerainstitucion_test` (`idTest`),
-#   KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
-#   CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON UPDATE CASCADE,
-#   CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
-# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 
 # Endpoint para iniciar test (genera registro en tabla 'test' y devuelve preguntas)
 @app.route('/api/v1/tests/start', methods=['POST'])
@@ -4924,21 +4964,20 @@ def tests_start():
         cur.execute("SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest='Activo' LIMIT 1")
         estadoActivo = cur.fetchone()
         if not estadoActivo:
-            return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
+            return jsonify({"errorCode":"ERR1","message":"No se encontro estado Activo. Comuniquese con el adminstrador"}), 500
         id_estado_activo = estadoActivo['idEstadoTest']
 
         # Crear nuevo test llamando a generar un ID unico complejo para enviar a la IA
-        unique_chat_id = str(uuid.uuid4())
-        cur.execute("INSERT INTO test (idEstadoTest, idUsuario, fechaTest, idChatIA) VALUES (%s, NULL, NOW(), %s)", (id_estado_activo, unique_chat_id))
+        chatIdIA = str(uuid.uuid4())
+        if not current_user_id:
+            cur.execute("INSERT INTO test (idEstadoTest, idUsuario, fechaTest, idChatIA) VALUES (%s, NULL, NOW(), %s)", (id_estado_activo, chatIdIA))
+        else:
+            cur.execute("INSERT INTO test (idEstadoTest, idUsuario, fechaTest, idChatIA) VALUES (%s, %s, NOW(), %s)", (id_estado_activo, current_user_id, chatIdIA))
         cur.execute("SELECT LAST_INSERT_ID() as id")
         idTest = cur.fetchone()['id']
 
-        # Obtener el chatIdIA generado
-        cur.execute("SELECT idChatIA FROM test WHERE idTest = %s", (idTest,))
-        chatIdIA = cur.fetchone()['idChatIA']
-
         # Enviar al endpoint para obtener preguntas:
-        # curl --location 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat' \
+        # curl --location 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat' \
         # --header 'content-type: application/json' \
         # --data '{
         #     "UserID": "15",
@@ -4957,8 +4996,10 @@ def tests_start():
         #     ]
         # }
 
+        userIDAnonimo = None
+
         # Enviar la solicitud al endpoint externo
-        external_api_url = 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat'
+        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
         if current_user_id:
             payload = {
                 "UserID": str(current_user_id),
@@ -4966,8 +5007,9 @@ def tests_start():
                 "ChatID": str(chatIdIA)
             }
         else:
+            userIDAnonimo = generate_complex_id()
             payload = {
-                "UserID": None,
+                "UserID": userIDAnonimo,
                 "prompt": "bien",
                 "ChatID": str(chatIdIA)
             }
@@ -4977,18 +5019,35 @@ def tests_start():
 
         response = requests.post(external_api_url, json=payload, headers=headers)
         if response.status_code != 200:
+            print("Error en llamada externa:", response.status_code, response.text)
             return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
 
         # Guardar el full_history en la tabla test
         cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(response.json().get("full_history", []), ensure_ascii=False), idTest))
         conn.commit()
 
-        return jsonify({
-            "idTest": int(idTest),
-            "chatId": idTest,
-            "chatIdIA": chatIdIA
-        }), 201
+        if userIDAnonimo:
+            return jsonify({
+                "userIDAnonimo": userIDAnonimo,
+                "idTest": int(idTest),
+                "chatId": idTest,
+                "chatIdIA": chatIdIA,
+                "fullHistory": response.json().get("full_history", []),
+                "chatbot_response": response.json().get("chatbot_response", "")
+            }), 201
+        else:
+            return jsonify({
+                "userID": current_user_id,
+                "idTest": int(idTest),
+                "chatId": idTest,
+                "chatIdIA": chatIdIA,
+                "fullHistory": response.json().get("full_history", []),
+                "chatbot_response": response.json().get("chatbot_response", "")
+            }), 201
+
     except Exception as e:
+        # Mostrar traceback en logs
+        print(traceback.format_exc())
         return jsonify({"errorCode":"ERR1","message":"No se pudo iniciar el test. Intente nuevamente."}), 500
     finally:
         try:
@@ -4996,6 +5055,10 @@ def tests_start():
             conn.close()
         except Exception as e:
             pass
+# Curl ejemplo endpoint anterior:
+# curl --location '{{baseURL}}/api/v1/tests/start' \
+# --header 'Content-Type: application/json' \
+# --data '{}'
 
 # Endpoint para enviar enviar respuesta de una pregunta y obtener la siguiente
 @app.route('/api/v1/tests/<int:id_test>/answer', methods=['POST'])
@@ -5011,10 +5074,14 @@ def tests_answer(id_test:int):
         except jwt.ExpiredSignatureError:
             pass
     data = request.get_json(silent=True) or {}
-    chatId = data.get('chatId')
     answer = data.get('answer')
-    if chatId is None or answer is None or not isinstance(chatId,int) or not isinstance(answer,str) or answer.strip() == '':
-        return jsonify({"errorCode":"ERR1","message":"Datos inválidos"}), 400
+    userIDAnonimo = None
+    if not current_user_id:
+        userIDAnonimo = data.get('userIdAnonimo')
+    if not userIDAnonimo and not current_user_id:
+        return jsonify({"errorCode":"ERR1","message":"Se necesita mandar userIdAnonimo o Authorization"}), 400
+    if answer is None or answer.strip() == '':
+        return jsonify({"errorCode":"ERR1","message":"Respuesta inválida"}), 400
 
     conn = None
     try:
@@ -5030,7 +5097,7 @@ def tests_answer(id_test:int):
         chatIdIA = test_row['idChatIA']
 
         # Enviar la respuesta al endpoint externo
-        external_api_url = 'https://en9soylmwi.execute-api.us-east-2.amazonaws.com/dev/chat'
+        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
         if current_user_id:
             payload = {
                 "UserID": str(current_user_id),
@@ -5039,7 +5106,7 @@ def tests_answer(id_test:int):
             }
         else:
             payload = {
-                "UserID": None,
+                "UserID": userIDAnonimo,
                 "prompt": answer.strip(),
                 "ChatID": str(chatIdIA)
             }
@@ -5049,15 +5116,21 @@ def tests_answer(id_test:int):
 
         response = requests.post(external_api_url, json=payload, headers=headers)
         if response.status_code != 200:
-            return jsonify({"errorCode":"ERR1","message":"No se pudo enviar la respuesta. Intente nuevamente."}), 500
-        
+            print("Error en llamada externa:", response.status_code, response.text)
+            return jsonify({"errorCode":"ERR1","message":"Error en llamada externa."}), 500
+
         resp_json = response.json()
         full_history = resp_json.get("full_history")
         next_question = resp_json.get("chatbot_response")
         status = resp_json.get("status")
-        if not full_history or not isinstance(full_history,list) or not next_question or not isinstance(next_question,str) or next_question.strip() == '':
-            return jsonify({"errorCode":"ERR1","message":"No se pudo enviar la respuesta. Intente nuevamente."}), 500
-        
+        if status == "FINISHED":
+            # Actualizar estado del test a Finalizado
+            cur.execute("UPDATE test SET idEstadoTest = (SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest = 'Finalizado') WHERE idTest = %s", (id_test,))
+            conn.commit()
+            return jsonify({
+                "message": "Test finalizado.",
+                "fullHistory": full_history
+            }), 200
         # Guardar el full_history en la tabla test
         cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(full_history, ensure_ascii=False), id_test))
         conn.commit()
@@ -5074,9 +5147,98 @@ def tests_answer(id_test:int):
             conn.close()
         except Exception as e:
             pass
+# Curl ejemplo endpoint anterior:
+# curl --location '{{baseURL}}/api/v1/tests/1/answer' \
+# --header 'Content-Type: application/json' \
+# --data '{
+#   "answer": "Respuesta del usuario",
+#   "userIdAnonimo": "ID_anonimo",
+#   "chatId": 1
+# }'
+
+# Endpoint para mostrar las carreras en base a los resultados del test
+@app.route('/api/v1/tests/<int:id_test>/results', methods=['GET'])
+def get_test_results(id_test):
+    # Obtener el token si existe en el header Authorization
+    auth_header = request.headers.get('Authorization')
+    current_user_id = None
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            current_user_id = payload.get('user_id')
+        except jwt.ExpiredSignatureError:
+            pass
+    # Obtener userIdAnonimo desde query parameters
+    userIDAnonimo = None
+    if not current_user_id:
+        userIDAnonimo = request.args.get('userIdAnonimo')
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Obtener idChatIA del test
+        cur.execute("SELECT idChatIA FROM test WHERE idTest = %s", (id_test,))
+        test_row = cur.fetchone()
+        if not test_row:
+            return jsonify({"errorCode":"ERR1","message":"Test no encontrado."}), 404
+        chatIdIA = test_row['idChatIA']
+        # Llamar al endpoint externo para obtener resultados validando que el estado del endpoint externo este en ("status": "FINISHED")
+        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
+
+        # Condicion para cuando el usuario se registra luego de realizar el test para poder visualizar su resultado
+        if current_user_id and userIDAnonimo:
+            # Modificar el test para asignarlo al usuario registrado
+            cur.execute("UPDATE test SET idUsuario = %s WHERE idTest = %s", (current_user_id, id_test))
+            conn.commit()
+            payload = {
+                "UserID": str(userIDAnonimo),
+                "ChatID": chatIdIA
+            }
+        else:
+            if current_user_id:
+                payload = {
+                    "UserID": current_user_id,
+                    "ChatID": chatIdIA
+                }
+            else:
+                if not userIDAnonimo:
+                    return jsonify({"errorCode":"ERR1","message":"Se necesita mandar userIdAnonimo como query parameter o Authorization header"}), 400
+                payload = {
+                    "UserID": userIDAnonimo,
+                    "ChatID": chatIdIA
+                }
+
+        response = requests.post(external_api_url, json=payload)
+        if response.status_code != 200:
+            print("Error en llamada externa:", response.status_code, response.text)
+            return jsonify({"errorCode":"ERR1","message":"No se pudo obtener los resultados del test. Intente nuevamente. 1"}), 500
+        
+        #{'chatbot_response': 'Test finalizado. Aquí está el historial completo.', 'chat_id': '46279cec-dfb5-40ed-992b-d6bf485172f7', 'status': 'FINISHED', 'full_history': ['Asistente: Bienvenido al Cuestionario Vocacional. Mi función es ayudarte a descubrir tus aptitudes y áreas de interés. Responde a las siguientes preguntas con sinceridad para obtener un análisis final. Empecemos:\n\n**Pregunta 1:** ¿Cómo describirías tus habilidades de ventas y orientación al cliente?', 'Usuario: None', 'Asistente: Entiendo que no tienes una respuesta inmediata. En este caso, interpretaré tu falta de respuesta como una puntuación baja en esa área. \n\n**Pregunta 2:** ¿Cómo te desenvuelves en tareas que requieren memoria y atención prolongada?', 'Usuario: None', 'Asistente: Entiendo que no tienes una respuesta inmediata. En este caso, interpretaré tu falta de respuesta como una puntuación baja en esa área.\n\n**Pregunta 3:** ¿Cómo te sientes trabajando en equipo y colaborando con otros?', 'Usuario: bien', 'Asistente: Gracias por tu respuesta. "Bien" sugiere que tienes una apreciación moderada en esta área. \n\n**Pregunta 4:** ¿Cómo describirías tu nivel de creatividad en situaciones laborales o de estudio?', 'Usuario: None', 'Asistente: Tu respuesta no proporciona información suficiente para evaluar tu creatividad.'], 'final_scores': {'Trabajo en equipo y colaboración': '3', 'Creatividad': '1', 'Habilidades de ventas y orientación al cliente': '3', 'Pensamiento crítico y analítico': '5', 'Memoria y atención': '3'}}
+
+        resp_json = response.json()
+        if resp_json.get("status") != "FINISHED":
+            return jsonify({"errorCode":"ERR1","message":"El test no ha finalizado."}), 400
+
+        return jsonify({"results": resp_json.get("final_scores", {})}), 200
+
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo obtener los resultados del test. Intente nuevamente. 2"}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception as e:
+            pass
+# Curl ejemplo endpoint anterior:
+# curl --location '{{baseURL}}/api/v1/tests/1/results?userIdAnonimo=ID_anonimo' \
+# --header 'Authorization: Bearer {{token}}'
+
+
 
 # Si no hay datos en ninguna métrica solicitada del tablero -> ERR1 (mensaje pedir cambiar filtros).
-# Permiso requerido: ADMIN_PANEL.
+# Permiso requerido
 # Limitaciones: Algunas métricas no pueden calcularse por ausencia de columnas (ej: fecha en test / compatibilidades), se devuelven listas vacías.
 
 def _parse_stats_filters():
@@ -5108,7 +5270,7 @@ def _province_clause(alias_user='u', alias_inst='i'):
     )
 
 @app.route('/api/v1/admin/stats/system', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('VIEW_STATS')
 def admin_stats_system(current_user_id):
     filters, err_resp, err_code = _parse_stats_filters()
     if err_resp:
@@ -5280,7 +5442,7 @@ def admin_stats_system(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/stats/system/export', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('VIEW_STATS')
 def admin_stats_system_export(current_user_id):
     filters, err_resp, err_code = _parse_stats_filters()
     if err_resp:
@@ -5321,7 +5483,7 @@ def admin_stats_system_export(current_user_id):
         return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_system.pdf"'})
 
 @app.route('/api/v1/admin/stats/users', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('VIEW_STATS')
 def admin_stats_users(current_user_id):
     filters, err_resp, err_code = _parse_stats_filters()
     if err_resp:
@@ -5374,7 +5536,7 @@ def admin_stats_users(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/stats/users/export', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('VIEW_STATS')
 def admin_stats_users_export(current_user_id):
     filters, err_resp, err_code = _parse_stats_filters()
     if err_resp:
@@ -5839,7 +6001,7 @@ def estudiante_stats_compatibilidad_export(current_user_id):
 # - Campos: frecuencia (diaria|semanal|mensual), horaEjecucion (HH:MM), cantidadBackupConservar (int>0)
 # - GET: devuelve configuración actual (si no existe, valores null)
 # - PUT: guarda configuración. Validaciones -> ERR1 campos obligatorios / formato inválido; ERR2 error técnico.
-# Permiso requerido: ADMIN_PANEL.
+# Permiso requerido.
 
 VALID_FREQUENCIAS_BACKUP = { 'diaria','semanal','mensual' }
 
@@ -5851,7 +6013,7 @@ def _read_backup_config(cur):
     return {"frecuencia": row['frecuencia'], "horaEjecucion": row['horaEjecucion'], "cantidadBackupConservar": row['cantidadBackupConservar']}
 
 @app.route('/api/v1/admin/backup/config', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('BACKUP_CONFIG')
 def backup_config_get(current_user_id):
     conn=None
     try:
@@ -5868,7 +6030,7 @@ def backup_config_get(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/backup/config', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('BACKUP_CONFIG')
 def backup_config_save(current_user_id):
     payload = request.get_json(silent=True) or {}
     freq = (payload.get('frecuencia') or '').strip().lower()
@@ -5928,7 +6090,7 @@ def _serialize_backup(row):
     }
 
 @app.route('/api/v1/admin/backup/list', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('BACKUP_RESTORE')
 def backup_list(current_user_id):
     conn=None
     try:
@@ -5957,7 +6119,7 @@ def _start_restore_job(fecha_str):
     return job
 
 @app.route('/api/v1/admin/backup/restore', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('BACKUP_RESTORE')
 def backup_restore_start(current_user_id):
     data = request.get_json(silent=True) or {}
     fecha = data.get('fechaBackup')
@@ -5983,7 +6145,7 @@ def backup_restore_start(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/backup/restore/status', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('BACKUP_RESTORE')
 def backup_restore_status(current_user_id):
     fecha = request.args.get('fecha')
     if not fecha or fecha not in _RESTORE_JOBS:
@@ -6014,7 +6176,7 @@ _INSTITUTION_REQUESTS_MEM = {
 }
 
 @app.route('/api/v1/admin/institutions/requests', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
 def admin_institution_requests_list(current_user_id):
     conn=None
     try:
@@ -6095,16 +6257,69 @@ def admin_institution_requests_list(current_user_id):
 
 
 @app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/approve', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
 def admin_institution_request_approve(current_user_id, id_institucion):
     conn=None
     try:
+        # Obtener los datos del cuerpo de la solicitud
+        data = request.get_json(silent=True) or {}
+        user_id = data.get('userId')
+        is_new_user = False
+        password_new_user = None
+        
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
+        
         # Verificar que la institución exista
-        cur.execute("SELECT idInstitucion FROM institucion WHERE idInstitucion=%s", (id_institucion,))
-        if not cur.fetchone():
+        cur.execute("SELECT * FROM institucion WHERE idInstitucion=%s", (id_institucion,))
+        institucion = cur.fetchone()
+        if not institucion:
             return jsonify({'errorCode':'ERR2','message':'La institución no existe.'}), 404
+        
+        # Verificar que se haya proporcionado un userId
+        if not user_id:
+            # Creamos un nuevo usuario usando los campos correctos de la tabla usuario
+            password_new_user = generate_password()
+            # Usamos valores por defecto para campos requeridos
+            default_dni = 0  # DNI por defecto para usuarios auto-creados
+            default_fecha_nac = '1990-01-01'  # Fecha de nacimiento por defecto
+            default_genero = 1  # Asumimos que existe un género con ID 1
+
+            # Buscar estadousuario "Activo"
+            cur.execute("SELECT * FROM estadousuario WHERE nombreEstadoUsuario='Activo' LIMIT 1")
+            estado_activo = cur.fetchone()
+            if not estado_activo:
+                return jsonify({'errorCode':'ERR2','message':'No se pudo obtener el estado de usuario Activo.'}), 404
+            id_estado_activo = estado_activo['idEstadoUsuario']
+            
+            cur.execute("""INSERT INTO usuario (mail, dni, nombre, apellido, contrasena, fechaNac, idGenero, idLocalidad) 
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                        (institucion['mail'], 
+                         default_dni, 
+                         f'Usuario-{institucion["nombreInstitucion"]}', 
+                         'AutoCreado', 
+                         hash_password(password_new_user), 
+                         default_fecha_nac,
+                         default_genero,
+                         institucion.get('idLocalidad')))
+            user_id = cur.lastrowid
+
+            # Asignar estado "Activo" al nuevo usuario con usuarioestado
+            cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario, fechaInicio) VALUES (%s, %s, NOW())", (user_id, id_estado_activo))
+
+            conn.commit()
+            is_new_user = True
+
+        # Verificar que el usuario exista
+        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario=%s", (user_id,))
+        if not cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'El usuario especificado no existe.'}), 404
+
+        # Verificar que el usuario no tenga ninguna instiucion asignada
+        cur.execute("SELECT idInstitucion FROM institucion WHERE idUsuario=%s", (user_id,))
+        if cur.fetchone():
+            return jsonify({'errorCode':'ERR2','message':'El usuario ya tiene una institución asignada.'}), 400
+        
         # Verificar el estado actual pasando por la tabla intermedia
         cur.execute("""
             SELECT ei.nombreEstadoInstitucion, ei.idEstadoInstitucion
@@ -6125,7 +6340,7 @@ def admin_institution_request_approve(current_user_id, id_institucion):
             return jsonify({'errorCode':'ERR2','message':'No se pudo obtener el estado de Aprobada.'}), 404
         id_estado_aprobada = estado_aprobada['idEstadoInstitucion']
         
-        # Actualizar la fecha fin del estado actual y crear nuevo estado 'Aprobada'
+        # Actualizar el estado de la institución a 'Aprobada'
         cur.execute("""
             UPDATE institucionestado
             SET fechaFin = NOW()
@@ -6137,28 +6352,72 @@ def admin_institution_request_approve(current_user_id, id_institucion):
             VALUES (%s, %s, NOW())
         """, (id_institucion, id_estado_aprobada))
 
+        # Asignar el usuario a la institución
+        cur.execute("""
+            UPDATE institucion 
+            SET idUsuario = %s 
+            WHERE idInstitucion = %s
+        """, (user_id, id_institucion))
+
+        # Asignar al usuario al grupo Institución si no lo tiene
+        # Obtener el id del grupo 'Institución'
+        cur.execute("SELECT idGrupo FROM grupo WHERE nombreGrupo='Institución' LIMIT 1")
+        grupo_institucion = cur.fetchone()
+        if not grupo_institucion:
+            return jsonify({'errorCode':'ERR2','message':'No se pudo obtener el grupo Institución.'}), 404
+        id_grupo_institucion = grupo_institucion['idGrupo']
+
+        # Verificar si el usuario ya pertenece al grupo
+        cur.execute("SELECT * FROM usuariogrupo WHERE idUsuario=%s AND idGrupo=%s", (user_id, id_grupo_institucion))
+        if not cur.fetchone():
+            cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo) VALUES (%s, %s)", (user_id, id_grupo_institucion))
+            conn.commit()
+
         # Enviar correo de notificación de aprobación
         cur.execute("SELECT mail, nombreInstitucion FROM institucion WHERE idInstitucion = %s", (id_institucion,))
         institucion_info = cur.fetchone()
         
         if institucion_info and institucion_info['mail']:
             try:
-                send_email(
-                    institucion_info['mail'], 
-                    "Solicitud de registro aprobada - OVO", 
-                    f"""
-                    Estimados,
-                    
-                    Nos complace informarle que su solicitud de registro para la institución "{institucion_info['nombreInstitucion']}" ha sido aprobada exitosamente.
-                    
-                    Su institución ahora forma parte de la plataforma OVO y puede comenzar a gestionar sus carreras y contenido académico.
-                    
-                    Para acceder a su panel de administración, utilice las credenciales que le serán enviadas por separado.
-                    
-                    Saludos cordiales,
-                    Equipo OVO
-                    """
-                )
+                if is_new_user:
+                    send_email(
+                        institucion_info['mail'], 
+                        "Solicitud de registro aprobada - OVO", 
+                        f"""
+                        Estimados, <br><br>
+                        
+                        Nos complace informarle que su solicitud de registro para la institución "{institucion_info['nombreInstitucion']}" ha sido aprobada exitosamente. <br><br>
+                        
+                        Su institución ahora forma parte de la plataforma OVO y puede comenzar a gestionar sus carreras y contenido académico.<br><br>
+
+                        Se le creo un usuario automáticamente con las siguientes credenciales:<br>
+                        Usuario: {institucion_info['mail']}<br>
+                        Contraseña: {password_new_user}<br><br>
+
+                        Para acceder a su panel de administración, utilice las credenciales que le serán enviadas por separado. <br><br>
+                        Le recomendamos cambiar su contraseña en el primer inicio de sesión.<br><br>
+                        
+                        Saludos cordiales, <br>
+                        Equipo OVO
+                        """
+                    )
+                else:
+                    send_email(
+                        institucion_info['mail'], 
+                        "Solicitud de registro aprobada - OVO", 
+                        f"""
+                        Estimados, <br><br>
+                        
+                        Nos complace informarle que su solicitud de registro para la institución "{institucion_info['nombreInstitucion']}" ha sido aprobada exitosamente. <br><br>
+                        
+                        Su institución ahora forma parte de la plataforma OVO y puede comenzar a gestionar sus carreras y contenido académico. <br><br>
+                        
+                        Para acceder a su panel de administración, utilice las credenciales que le serán enviadas por separado. <br><br>
+                        
+                        Saludos cordiales, <br>
+                        Equipo OVO
+                        """
+                    )
             except Exception as email_error:
                 log(f"Error sending approval email: {email_error}")
 
@@ -6168,9 +6427,14 @@ def admin_institution_request_approve(current_user_id, id_institucion):
     except Exception as e:
         log(f"US028 approve error: {e}\n{traceback.format_exc()}")
         return jsonify({'errorCode':'ERR2','message':'No se pudo aprobar la solicitud. Intente nuevamente.'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception as e:
+            pass
 
 @app.route('/api/v1/admin/institutions/requests/<int:id_institucion>/reject', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
 def admin_institution_request_reject(current_user_id, id_institucion):
     conn=None
     try:
@@ -6260,60 +6524,9 @@ def admin_institution_request_reject(current_user_id, id_institucion):
             if conn: conn.close()
         except Exception: pass
 
-
-# -- Volcando estructura para tabla ovo.institucion
-# CREATE TABLE IF NOT EXISTS `institucion` (
-#   `idInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-#   `idTipoInstitucion` int(11) NOT NULL,
-#   `idLocalidad` int(11) DEFAULT NULL,
-#   `idUsuario` int(11) DEFAULT NULL,
-#   `anioFundacion` int(11) NOT NULL,
-#   `codigoPostal` int(11) NOT NULL,
-#   `nombreInstitucion` varchar(50) NOT NULL,
-#   `CUIT` int(11) NOT NULL,
-#   `direccion` varchar(50) NOT NULL,
-#   `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
-#   `siglaInstitucion` varchar(50) NOT NULL,
-#   `telefono` varchar(50) NOT NULL,
-#   `mail` varchar(50) NOT NULL,
-#   `sitioWeb` varchar(50) NOT NULL,
-#   `urlLogo` varchar(50) NOT NULL,
-#   PRIMARY KEY (`idInstitucion`),
-#   KEY `FK_institucion_tipoinstitucion` (`idTipoInstitucion`),
-#   KEY `FK_institucion_localidad` (`idLocalidad`),
-#   KEY `FK_institucion_usuario` (`idUsuario`),
-#   CONSTRAINT `FK_institucion_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE SET NULL ON UPDATE CASCADE,
-#   CONSTRAINT `FK_institucion_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON UPDATE CASCADE,
-#   CONSTRAINT `FK_institucion_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON UPDATE CASCADE
-# ) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-# -- La exportación de datos fue deseleccionada.
-
-# -- Volcando estructura para tabla ovo.institucionestado
-# CREATE TABLE IF NOT EXISTS `institucionestado` (
-#   `idinstitucionEstado` int(11) NOT NULL AUTO_INCREMENT,
-#   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
-#   `fechaFin` datetime DEFAULT NULL,
-#   `idEstadoInstitucion` int(11) DEFAULT NULL,
-#   `idInstitucion` int(11) DEFAULT NULL,
-#   PRIMARY KEY (`idinstitucionEstado`),
-#   KEY `FK_institucionestado_estadoinstitucion` (`idEstadoInstitucion`),
-#   KEY `FK_institucionestado_institucion` (`idInstitucion`),
-#   CONSTRAINT `FK_institucionestado_estadoinstitucion` FOREIGN KEY (`idEstadoInstitucion`) REFERENCES `estadoinstitucion` (`idEstadoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
-#   CONSTRAINT `FK_institucionestado_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
-# ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-# -- Volcando estructura para tabla ovo.estadoinstitucion
-# CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
-#   `idEstadoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
-#   `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
-#   `fechaFin` datetime DEFAULT NULL,
-#   PRIMARY KEY (`idEstadoInstitucion`)
-# ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 # Endpoint para dar de baja la institución
 @app.route('/api/v1/admin/institutions/<int:id_institucion>/deactivate', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
 def admin_institution_deactivate(current_user_id, id_institucion):
     conn=None
     try:
@@ -6395,7 +6608,7 @@ def _career_exists_active(cur, nombre, tipo_id, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/careers', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_CATALOG')
 def admin_catalog_careers_list(current_user_id):
     conn=None
     try:
@@ -6413,7 +6626,7 @@ def admin_catalog_careers_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/careers', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_CATALOG')
 def admin_catalog_career_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreCarrera') or '').strip()
@@ -6439,7 +6652,7 @@ def admin_catalog_career_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_CATALOG')
 def admin_catalog_career_detail(current_user_id, id_carrera):
     conn=None
     try:
@@ -6459,7 +6672,7 @@ def admin_catalog_career_detail(current_user_id, id_carrera):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_CATALOG')
 def admin_catalog_career_update(current_user_id, id_carrera):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreCarrera') or '').strip()
@@ -6529,7 +6742,7 @@ def admin_catalog_career_update(current_user_id, id_carrera):
 # curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas Actualizada\",\"idTipoCarrera\":1}"
 
 @app.route('/api/v1/admin/catalog/careers/<int:id_carrera>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_CATALOG')
 def admin_catalog_career_delete(current_user_id, id_carrera):
     conn=None
     try:
@@ -6548,26 +6761,6 @@ def admin_catalog_career_delete(current_user_id, id_carrera):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US029 (token Hola):
-# Listar carreras activas:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers" -H "Authorization: Bearer {{token}}"
-# Listar todas las carreras (incluye inactivas):
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers" -H "Authorization: Bearer {{token}}"
-# Crear carrera:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/careers" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1}"
-# Detalle de carrera:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}"
-# Actualizar carrera (solo nombre y tipo):
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas Actualizada\",\"idTipoCarrera\":1}"
-# Actualizar carrera con baja inmediata:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"NOW()\"}"
-# Actualizar carrera con baja programada:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"2025-12-31 23:59:59\"}"
-# Actualizar carrera para reactivarla (quitar fecha fin):
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreCarrera\":\"Ingeniería en Sistemas\",\"idTipoCarrera\":1,\"fechaFin\":\"NULL\"}"
-# Baja lógica mediante DELETE:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/careers/1" -H "Authorization: Bearer {{token}}"
 
 
 # ============================ ABM TipoCarrera (US030) ============================
@@ -6592,9 +6785,8 @@ def _tipo_carrera_exists_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-types', methods=['GET'])
-# @requires_permission('ADMIN_PANEL')
-# def admin_career_types_list(current_user_id):
-def admin_career_types_list():
+@requires_permission('MANAGE_CAREERS_TYPES')
+def admin_career_types_list(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -6611,7 +6803,7 @@ def admin_career_types_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-types', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_TYPES')
 def admin_career_type_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoCarrera') or '').strip()
@@ -6636,7 +6828,7 @@ def admin_career_type_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_TYPES')
 def admin_career_type_detail(current_user_id, id_tipo):
     conn=None
     try:
@@ -6656,7 +6848,7 @@ def admin_career_type_detail(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_TYPES')
 def admin_career_type_update(current_user_id, id_tipo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoCarrera') or '').strip()
@@ -6683,7 +6875,7 @@ def admin_career_type_update(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREERS_TYPES')
 def admin_career_type_delete(current_user_id, id_tipo):
     conn=None
     try:
@@ -6743,7 +6935,7 @@ def admin_countries_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/countries', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_COUNTRIES')
 def admin_country_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombrePais') or '').strip()
@@ -6768,7 +6960,7 @@ def admin_country_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_COUNTRIES')
 def admin_country_detail(current_user_id, id_pais):
     conn=None
     try:
@@ -6788,7 +6980,7 @@ def admin_country_detail(current_user_id, id_pais):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_COUNTRIES')
 def admin_country_update(current_user_id, id_pais):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombrePais') or '').strip()
@@ -6815,7 +7007,7 @@ def admin_country_update(current_user_id, id_pais):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/countries/<int:id_pais>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_COUNTRIES')
 def admin_country_delete(current_user_id, id_pais):
     conn=None
     try:
@@ -6834,20 +7026,6 @@ def admin_country_delete(current_user_id, id_pais):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US031 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/countries" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePais\":\"Argentina\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePais\":\"Argentina Modificada\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/countries/1" -H "Authorization: Bearer {{token}}"
 
 
 # ============================ ABM Provincia (US032) ============================
@@ -6900,7 +7078,7 @@ def admin_provinces_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/provinces', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PROVINCES')
 def admin_province_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreProvincia') or '').strip()
@@ -6931,7 +7109,7 @@ def admin_province_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PROVINCES')
 def admin_province_detail(current_user_id, id_provincia):
     conn=None
     try:
@@ -6951,7 +7129,7 @@ def admin_province_detail(current_user_id, id_provincia):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PROVINCES')
 def admin_province_update(current_user_id, id_provincia):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreProvincia') or '').strip()
@@ -6983,7 +7161,7 @@ def admin_province_update(current_user_id, id_provincia):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/provinces/<int:id_provincia>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PROVINCES')
 def admin_province_delete(current_user_id, id_provincia):
     conn=None
     try:
@@ -7002,18 +7180,6 @@ def admin_province_delete(current_user_id, id_provincia):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US032 (token Hola):
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/provinces" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreProvincia\":\"Córdoba\",\"idPais\":1}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreProvincia\":\"Córdoba Norte\",\"idPais\":1}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/provinces/1" -H "Authorization: Bearer {{token}}"
 
 
 # ============================ ABM Localidad (US033) ============================
@@ -7060,7 +7226,7 @@ def admin_localities_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/localities', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_LOCALITIES')
 def admin_locality_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreLocalidad') or '').strip()
@@ -7090,7 +7256,7 @@ def admin_locality_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_LOCALITIES')
 def admin_locality_detail(current_user_id, id_localidad):
     conn=None
     try:
@@ -7110,7 +7276,7 @@ def admin_locality_detail(current_user_id, id_localidad):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_LOCALITIES')
 def admin_locality_update(current_user_id, id_localidad):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreLocalidad') or '').strip()
@@ -7142,7 +7308,7 @@ def admin_locality_update(current_user_id, id_localidad):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/localities/<int:id_localidad>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_LOCALITIES')
 def admin_locality_delete(current_user_id, id_localidad):
     conn=None
     try:
@@ -7161,23 +7327,6 @@ def admin_locality_delete(current_user_id, id_localidad):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US033 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/localities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreLocalidad\":\"Guaymallén\",\"idProvincia\":1}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreLocalidad\":\"Guaymallén Centro\",\"idProvincia\":1}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/localities/1" -H "Authorization: Bearer {{token}}"
-
-
-# ACA AGREGAR LAS HUs SIGUIENTES
 
 # ============================ ABM Género (US034) ============================
 # Tabla: genero (idGenero, nombreGenero, fechaFin)
@@ -7218,7 +7367,7 @@ def admin_genders_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/genders', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GENDERS')
 def admin_gender_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreGenero') or '').strip()
@@ -7243,7 +7392,7 @@ def admin_gender_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GENDERS')
 def admin_gender_detail(current_user_id, id_genero):
     conn=None
     try:
@@ -7263,7 +7412,7 @@ def admin_gender_detail(current_user_id, id_genero):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GENDERS')
 def admin_gender_update(current_user_id, id_genero):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreGenero') or '').strip()
@@ -7290,7 +7439,7 @@ def admin_gender_update(current_user_id, id_genero):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/genders/<int:id_genero>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GENDERS')
 def admin_gender_delete(current_user_id, id_genero):
     conn=None
     try:
@@ -7309,22 +7458,6 @@ def admin_gender_delete(current_user_id, id_genero):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US034 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/genders" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGenero\":\"No Binario\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGenero\":\"No Binario (Actualizado)\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/genders/1" -H "Authorization: Bearer {{token}}"
-
-
 
 
 # ============================ ABM EstadoUsuario (US035) ============================
@@ -7349,7 +7482,7 @@ def _estado_usuario_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/user-statuses', methods=['GET'])
-@requires_permission(['ADMIN_PANEL',"EDIT_USERS"])
+@requires_permission('MANAGE_USER_STATUSES')
 def admin_user_statuses_list(current_user_id):
     conn=None
     try:
@@ -7367,7 +7500,7 @@ def admin_user_statuses_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/user-statuses', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USER_STATUSES')
 def admin_user_status_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoUsuario') or '').strip()
@@ -7392,7 +7525,7 @@ def admin_user_status_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USER_STATUSES')
 def admin_user_status_detail(current_user_id, id_estado):
     conn=None
     try:
@@ -7412,7 +7545,7 @@ def admin_user_status_detail(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USER_STATUSES')
 def admin_user_status_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoUsuario') or '').strip()
@@ -7439,7 +7572,7 @@ def admin_user_status_update(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USER_STATUSES')
 def admin_user_status_delete(current_user_id, id_estado):
     conn=None
     try:
@@ -7495,7 +7628,7 @@ def _permiso_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/permissions', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PERMISSIONS')
 def admin_permissions_list(current_user_id):
     conn=None
     try:
@@ -7513,7 +7646,7 @@ def admin_permissions_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/permissions', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PERMISSIONS')
 def admin_permission_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombrePermiso') or '').strip()
@@ -7539,7 +7672,7 @@ def admin_permission_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PERMISSIONS')
 def admin_permission_detail(current_user_id, id_permiso):
     conn=None
     try:
@@ -7559,7 +7692,7 @@ def admin_permission_detail(current_user_id, id_permiso):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PERMISSIONS')
 def admin_permission_update(current_user_id, id_permiso):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombrePermiso') or '').strip()
@@ -7587,7 +7720,7 @@ def admin_permission_update(current_user_id, id_permiso):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/permissions/<int:id_permiso>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_PERMISSIONS')
 def admin_permission_delete(current_user_id, id_permiso):
     conn=None
     try:
@@ -7606,23 +7739,6 @@ def admin_permission_delete(current_user_id, id_permiso):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US036 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/permissions" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePermiso\":\"VER_REPORTES\",\"descripcion\":\"Permite ver reportes\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombrePermiso\":\"VER_REPORTES\",\"descripcion\":\"Puede ver y exportar reportes\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/permissions/1" -H "Authorization: Bearer {{token}}"
-
-
-
 
 
 # ============================ ABM Grupo (US037) ============================
@@ -7656,7 +7772,7 @@ def _fetch_permisos_por_grupo(cur, id_grupo):
     return cur.fetchall() or []
 
 @app.route('/api/v1/admin/catalog/groups', methods=['GET'])
-@requires_permission(['ADMIN_PANEL','EDIT_USERS'])
+@requires_permission('MANAGE_GROUPS')
 def admin_groups_list(current_user_id):
     conn=None
     try:
@@ -7681,7 +7797,7 @@ def admin_groups_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/groups', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUPS')
 def admin_group_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreGrupo') or '').strip()
@@ -7719,7 +7835,7 @@ def admin_group_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUPS')
 def admin_group_detail(current_user_id, id_grupo):
     conn=None
     try:
@@ -7743,7 +7859,7 @@ def admin_group_detail(current_user_id, id_grupo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUPS')
 def admin_group_update(current_user_id, id_grupo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreGrupo') or '').strip()
@@ -7793,7 +7909,7 @@ def admin_group_update(current_user_id, id_grupo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/groups/<int:id_grupo>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUPS')
 def admin_group_delete(current_user_id, id_grupo):
     conn=None
     try:
@@ -7814,22 +7930,6 @@ def admin_group_delete(current_user_id, id_grupo):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US037 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}"
-# Crear (con permisos 1 y 2):
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/groups" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGrupo\":\"Supervisores\",\"descripcion\":\"Grupo de supervisión\",\"permisos\":[1,2]}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}"
-# Actualizar (remover 2, agregar 1 y 3):
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreGrupo\":\"Supervisores\",\"descripcion\":\"Grupo actualizado\",\"permisos\":[1,3]}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/groups/1" -H "Authorization: Bearer {{token}}"
-
-
 
 
 # ============================ ABM TipoInstitución (US038) ============================
@@ -7854,7 +7954,7 @@ def _tipo_institucion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/institution-types', methods=['GET'])
-# @requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_TYPES')
 def admin_institution_types_list():
     conn=None
     try:
@@ -7872,7 +7972,7 @@ def admin_institution_types_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-types', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_TYPES')
 def admin_institution_type_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoInstitucion') or '').strip()
@@ -7897,7 +7997,7 @@ def admin_institution_type_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_TYPES')
 def admin_institution_type_detail(current_user_id, id_tipo):
     conn=None
     try:
@@ -7917,7 +8017,7 @@ def admin_institution_type_detail(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_TYPES')
 def admin_institution_type_update(current_user_id, id_tipo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoInstitucion') or '').strip()
@@ -7944,7 +8044,7 @@ def admin_institution_type_update(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-types/<int:id_tipo>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_TYPES')
 def admin_institution_type_delete(current_user_id, id_tipo):
     conn=None
     try:
@@ -7964,39 +8064,19 @@ def admin_institution_type_delete(current_user_id, id_tipo):
             if conn: conn.close()
         except Exception: pass
 
-# cURL ejemplos US038 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-types" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoInstitucion\":\"Universidad Privada\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoInstitucion\":\"Instituto Técnico\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/institution-types/1" -H "Authorization: Bearer {{token}}"
-
-
-
-
-
-
-
- # ============================ ABM ModalidadCarreraInstitución (US039) ============================
- # Tabla: modalidadcarrerainstitucion (idModalidadCarreraInstitucion, nombreModalidad, fechaFin?)
- # Según dump, la tabla actual solo muestra id y nombreModalidad (no fechaFin). Para cumplir baja lógica añadiremos control si existe fechaFin;
- # si no existe la columna, la baja será física (DELETE). Asumimos existencia potencial de fechaFin por consistencia; si no está, DELETE.
- # Endpoints:
- #  GET    /api/v1/admin/catalog/career-modalities                  -> listado (activos por defecto;  para todos si existe fechaFin)
- #  POST   /api/v1/admin/catalog/career-modalities                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
- #  GET    /api/v1/admin/catalog/career-modalities/<id>             -> detalle
- #  PUT    /api/v1/admin/catalog/career-modalities/<id>             -> modificar nombre ERR1 (vacío o duplicado)
- #  DELETE /api/v1/admin/catalog/career-modalities/<id>             -> baja lógica (fechaFin=NOW()) o física si no hay columna; ERR2 en error/no encontrado
- # Errores:
- #  ERR1: "Debe ingresar un nombre para la modalidad." (nombre vacío o duplicado activo)
- #  ERR2: "No se pudo eliminar la modalidad. Intente nuevamente." (error técnico o inexistente)
+# ============================ ABM ModalidadCarreraInstitución (US039) ============================
+# Tabla: modalidadcarrerainstitucion (idModalidadCarreraInstitucion, nombreModalidad, fechaFin?)
+# Según dump, la tabla actual solo muestra id y nombreModalidad (no fechaFin). Para cumplir baja lógica añadiremos control si existe fechaFin;
+# si no existe la columna, la baja será física (DELETE). Asumimos existencia potencial de fechaFin por consistencia; si no está, DELETE.
+# Endpoints:
+#  GET    /api/v1/admin/catalog/career-modalities                  -> listado (activos por defecto;  para todos si existe fechaFin)
+#  POST   /api/v1/admin/catalog/career-modalities                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
+#  GET    /api/v1/admin/catalog/career-modalities/<id>             -> detalle
+#  PUT    /api/v1/admin/catalog/career-modalities/<id>             -> modificar nombre ERR1 (vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/career-modalities/<id>             -> baja lógica (fechaFin=NOW()) o física si no hay columna; ERR2 en error/no encontrado
+# Errores:
+#  ERR1: "Debe ingresar un nombre para la modalidad." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar la modalidad. Intente nuevamente." (error técnico o inexistente)
 
 def _modalidad_duplicate_active(cur, nombre, exclude_id=None):
     # Intentar usar fechaFin si existe; fallback sin fechaFin
@@ -8018,9 +8098,8 @@ def _modalidad_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-modalities', methods=['GET'])
-# @requires_permission('ADMIN_PANEL')
-# def admin_career_modalities_list(current_user_id):
-def admin_career_modalities_list():
+@requires_permission('MANAGE_CAREER_MODALITIES')
+def admin_career_modalities_list(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -8041,7 +8120,7 @@ def admin_career_modalities_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-modalities', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_MODALITIES')
 def admin_career_modality_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreModalidad') or '').strip()
@@ -8070,7 +8149,7 @@ def admin_career_modality_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_MODALITIES')
 def admin_career_modality_detail(current_user_id, id_mod):
     conn=None
     try:
@@ -8093,7 +8172,7 @@ def admin_career_modality_detail(current_user_id, id_mod):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_MODALITIES')
 def admin_career_modality_update(current_user_id, id_mod):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreModalidad') or '').strip()
@@ -8127,7 +8206,7 @@ def admin_career_modality_update(current_user_id, id_mod):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-modalities/<int:id_mod>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_MODALITIES')
 def admin_career_modality_delete(current_user_id, id_mod):
     conn=None
     try:
@@ -8156,32 +8235,18 @@ def admin_career_modality_delete(current_user_id, id_mod):
             if conn: conn.close()
         except Exception: pass
 
-# cURL ejemplos US039 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/career-modalities" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreModalidad\":\"Virtual\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreModalidad\":\"Híbrida\"}"
-# Baja lógica/física:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/career-modalities/1" -H "Authorization: Bearer {{token}}"
 
-
- # ============================ ABM Aptitud (US040) ============================
- # Tabla: aptitud (idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja)
- # Endpoints:
- #  GET    /api/v1/admin/catalog/aptitudes                  -> listado (activas por defecto;  para todas)
- #  POST   /api/v1/admin/catalog/aptitudes                  -> alta (nombre obligatorio, descripcion opcional) ERR1 (vacío o duplicado activo)
- #  GET    /api/v1/admin/catalog/aptitudes/<id>             -> detalle
- #  PUT    /api/v1/admin/catalog/aptitudes/<id>             -> modificar nombre/descripcion ERR1 (vacío o duplicado)
- #  DELETE /api/v1/admin/catalog/aptitudes/<id>             -> baja lógica (fechaBaja=NOW()) ERR2 si error/no encontrado
- # Errores:
- #  ERR1: "Debe ingresar un nombre para la aptitud." (nombre vacío o duplicado activo)
- #  ERR2: "No se pudo eliminar la aptitud. Intente nuevamente." (error técnico o inexistente)
+# ============================ ABM Aptitud (US040) ============================
+# Tabla: aptitud (idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/aptitudes                  -> listado (activas por defecto;  para todas)
+#  POST   /api/v1/admin/catalog/aptitudes                  -> alta (nombre obligatorio, descripcion opcional) ERR1 (vacío o duplicado activo)
+#  GET    /api/v1/admin/catalog/aptitudes/<id>             -> detalle
+#  PUT    /api/v1/admin/catalog/aptitudes/<id>             -> modificar nombre/descripcion ERR1 (vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/aptitudes/<id>             -> baja lógica (fechaBaja=NOW()) ERR2 si error/no encontrado
+# Errores:
+#  ERR1: "Debe ingresar un nombre para la aptitud." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar la aptitud. Intente nuevamente." (error técnico o inexistente)
 
 def _aptitud_duplicate_active(cur, nombre, exclude_id=None):
     q = "SELECT idAptitud FROM aptitud WHERE nombreAptitud=%s AND fechaBaja IS NULL"
@@ -8193,7 +8258,7 @@ def _aptitud_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/aptitudes', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_APTITUDES')
 def admin_aptitudes_list(current_user_id):
     conn=None
     try:
@@ -8211,7 +8276,7 @@ def admin_aptitudes_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/aptitudes', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_APTITUDES')
 def admin_aptitud_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreAptitud') or '').strip()
@@ -8237,7 +8302,7 @@ def admin_aptitud_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_APTITUDES')
 def admin_aptitud_detail(current_user_id, id_aptitud):
     conn=None
     try:
@@ -8257,7 +8322,7 @@ def admin_aptitud_detail(current_user_id, id_aptitud):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_APTITUDES')
 def admin_aptitud_update(current_user_id, id_aptitud):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreAptitud') or '').strip()
@@ -8285,7 +8350,7 @@ def admin_aptitud_update(current_user_id, id_aptitud):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/aptitudes/<int:id_aptitud>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_APTITUDES')
 def admin_aptitud_delete(current_user_id, id_aptitud):
     conn=None
     try:
@@ -8305,31 +8370,17 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
             if conn: conn.close()
         except Exception: pass
 
-# cURL ejemplos US040 (token Hola):
-# Listar activas:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}"
-# Listar todas:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/aptitudes" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreAptitud\":\"Liderazgo\",\"descripcion\":\"Capacidad de guiar equipos\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreAptitud\":\"Comunicación\",\"descripcion\":\"Habilidad para transmitir ideas\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/aptitudes/1" -H "Authorization: Bearer {{token}}"
-
- # ============================ ABM EstadoAcceso (US041) ============================
- # Tabla: estadoacceso (idEstadoAcceso, nombreEstadoAcceso, fechaFin)
- # Endpoints:
- #  GET    /api/v1/admin/catalog/access-statuses                  -> listado (activos por defecto;  para todos)
- #  POST   /api/v1/admin/catalog/access-statuses                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
- #  GET    /api/v1/admin/catalog/access-statuses/<id>             -> detalle
- #  PUT    /api/v1/admin/catalog/access-statuses/<id>             -> modificar nombre ERR1 (vacío o duplicado)
- #  DELETE /api/v1/admin/catalog/access-statuses/<id>             -> baja lógica (fechaFin=NOW()) ERR2 si error/no encontrado
- # Errores:
- #  ERR1: "Debe ingresar un nombre para el estado." (nombre vacío o duplicado activo)
- #  ERR2: "No se pudo eliminar el estado de acceso. Intente nuevamente." (error técnico o inexistente)
+# ============================ ABM EstadoAcceso (US041) ============================
+# Tabla: estadoacceso (idEstadoAcceso, nombreEstadoAcceso, fechaFin)
+# Endpoints:
+#  GET    /api/v1/admin/catalog/access-statuses                  -> listado (activos por defecto;  para todos)
+#  POST   /api/v1/admin/catalog/access-statuses                  -> alta (nombre obligatorio) ERR1 (vacío o duplicado activo)
+#  GET    /api/v1/admin/catalog/access-statuses/<id>             -> detalle
+#  PUT    /api/v1/admin/catalog/access-statuses/<id>             -> modificar nombre ERR1 (vacío o duplicado)
+#  DELETE /api/v1/admin/catalog/access-statuses/<id>             -> baja lógica (fechaFin=NOW()) ERR2 si error/no encontrado
+# Errores:
+#  ERR1: "Debe ingresar un nombre para el estado." (nombre vacío o duplicado activo)
+#  ERR2: "No se pudo eliminar el estado de acceso. Intente nuevamente." (error técnico o inexistente)
 
 def _estado_acceso_duplicate_active(cur, nombre, exclude_id=None):
     q = "SELECT idEstadoAcceso FROM estadoacceso WHERE nombreEstadoAcceso=%s AND fechaFin IS NULL"
@@ -8341,7 +8392,7 @@ def _estado_acceso_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/access-statuses', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCESS_STATUSES')
 def admin_access_statuses_list(current_user_id):
     conn=None
     try:
@@ -8359,7 +8410,7 @@ def admin_access_statuses_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/access-statuses', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCESS_STATUSES')
 def admin_access_status_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoAcceso') or '').strip()
@@ -8384,7 +8435,7 @@ def admin_access_status_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCESS_STATUSES')
 def admin_access_status_detail(current_user_id, id_estado):
     conn=None
     try:
@@ -8404,7 +8455,7 @@ def admin_access_status_detail(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCESS_STATUSES')
 def admin_access_status_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoAcceso') or '').strip()
@@ -8431,7 +8482,7 @@ def admin_access_status_update(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/access-statuses/<int:id_estado>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCESS_STATUSES')
 def admin_access_status_delete(current_user_id, id_estado):
     conn=None
     try:
@@ -8450,20 +8501,6 @@ def admin_access_status_delete(current_user_id, id_estado):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US041 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/access-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoAcceso\":\"Bloqueado\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoAcceso\":\"Suspenso Temporal\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/access-statuses/1" -H "Authorization: Bearer {{token}}"
 
 
 ### ============================ ABM TipoAcción (US042) ============================
@@ -8489,7 +8526,7 @@ def _tipo_accion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/action-types', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCION_TYPES')
 def admin_action_types_list(current_user_id):
     conn=None
     try:
@@ -8507,7 +8544,7 @@ def admin_action_types_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/action-types', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCION_TYPES')
 def admin_action_type_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoAccion') or '').strip()
@@ -8532,7 +8569,7 @@ def admin_action_type_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCION_TYPES')
 def admin_action_type_detail(current_user_id, id_tipo):
     conn=None
     try:
@@ -8552,7 +8589,7 @@ def admin_action_type_detail(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCION_TYPES')
 def admin_action_type_update(current_user_id, id_tipo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoAccion') or '').strip()
@@ -8579,7 +8616,7 @@ def admin_action_type_update(current_user_id, id_tipo):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/action-types/<int:id_tipo>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_ACCION_TYPES')
 def admin_action_type_delete(current_user_id, id_tipo):
     conn=None
     try:
@@ -8604,19 +8641,6 @@ def admin_action_type_delete(current_user_id, id_tipo):
             if conn: conn.close()
         except Exception: pass
 
-# cURL ejemplos US042 (token Hola):
-# Listar:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/action-types" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/action-types" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoAccion\":\"MODIFICACION\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoAccion\":\"ACTUALIZACION\"}"}
-# Baja:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/action-types/1" -H "Authorization: Bearer {{token}}"
-
-
 ### ============================ ABM EstadoInstitución (US043) ============================
 # Tabla: estadoinstitucion (idEstadoInstitucion, nombreEstadoInstitucion, fechaFin)
 # Endpoints:
@@ -8639,7 +8663,7 @@ def _estado_institucion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/institution-states', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_STATES')
 def admin_institution_states_list(current_user_id):
     conn=None
     try:
@@ -8657,7 +8681,7 @@ def admin_institution_states_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-states', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_STATES')
 def admin_institution_state_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoInstitucion') or '').strip()
@@ -8682,7 +8706,7 @@ def admin_institution_state_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_STATES')
 def admin_institution_state_detail(current_user_id, id_estado):
     conn=None
     try:
@@ -8702,7 +8726,7 @@ def admin_institution_state_detail(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_STATES')
 def admin_institution_state_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoInstitucion') or '').strip()
@@ -8729,7 +8753,7 @@ def admin_institution_state_update(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/institution-states/<int:id_estado>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_INSTITUTION_STATES')
 def admin_institution_state_delete(current_user_id, id_estado):
     conn=None
     try:
@@ -8748,20 +8772,6 @@ def admin_institution_state_delete(current_user_id, id_estado):
         try:
             if conn: conn.close()
         except Exception: pass
-
-# cURL ejemplos US043 (token Hola):
-# Listar activos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}"
-# Listar todos:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/institution-states" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoInstitucion\":\"Pendiente\"}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoInstitucion\":\"Aprobada\"}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/institution-states/1" -H "Authorization: Bearer {{token}}"
 
 
 ### ============================ ABM EstadoCarreraInstitución (US044) ============================
@@ -8786,9 +8796,8 @@ def _estado_carrera_institucion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses', methods=['GET'])
-# @requires_permission('ADMIN_PANEL')
-# def admin_career_institution_statuses_list(current_user_id):
-def admin_career_institution_statuses_list():
+@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
+def admin_career_institution_statuses_list(current_user_id):
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -8805,7 +8814,7 @@ def admin_career_institution_statuses_list():
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
 def admin_career_institution_status_create(current_user_id):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoCarreraInstitucion') or '').strip()
@@ -8830,7 +8839,7 @@ def admin_career_institution_status_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
 def admin_career_institution_status_detail(current_user_id, id_estado):
     conn=None
     try:
@@ -8850,7 +8859,7 @@ def admin_career_institution_status_detail(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
 def admin_career_institution_status_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoCarreraInstitucion') or '').strip()
@@ -8877,7 +8886,7 @@ def admin_career_institution_status_update(current_user_id, id_estado):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
 def admin_career_institution_status_delete(current_user_id, id_estado):
     conn=None
     try:
@@ -8948,7 +8957,7 @@ def _validate_backup_payload(data):
         return None
 
 @app.route('/api/v1/admin/catalog/backup-configs', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_BACKUP_CONFIGS')
 def admin_backup_configs_list(current_user_id):
     conn=None
     try:
@@ -8965,7 +8974,7 @@ def admin_backup_configs_list(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/backup-configs', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_BACKUP_CONFIGS')
 def admin_backup_config_create(current_user_id):
     data = request.get_json(silent=True) or {}
     parsed = _validate_backup_payload(data)
@@ -8989,7 +8998,7 @@ def admin_backup_config_create(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/backup-configs/1', methods=['GET'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_BACKUP_CONFIGS')
 def admin_backup_config_detail(current_user_id):
     conn=None
     try:
@@ -9008,7 +9017,7 @@ def admin_backup_config_detail(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/backup-configs/1', methods=['PUT'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_BACKUP_CONFIGS')
 def admin_backup_config_update(current_user_id):
     data = request.get_json(silent=True) or {}
     parsed = _validate_backup_payload(data)
@@ -9035,7 +9044,7 @@ def admin_backup_config_update(current_user_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/backup-configs/1', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_BACKUP_CONFIGS')
 def admin_backup_config_delete(current_user_id):
     conn=None
     try:
@@ -9055,17 +9064,6 @@ def admin_backup_config_delete(current_user_id):
             if conn: conn.close()
         except Exception: pass
 
-# cURL ejemplos US045 (token Hola):
-# Listar:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/backup-configs" -H "Authorization: Bearer {{token}}"
-# Crear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/backup-configs" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"frecuencia\":\"diaria\",\"horaEjecucion\":\"02:30\",\"cantidadBackupConservar\":5}"
-# Detalle:
-# curl -X GET "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}"
-# Actualizar:
-# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"frecuencia\":\"semanal\",\"horaEjecucion\":\"03:00\",\"cantidadBackupConservar\":8}"
-# Baja:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/backup-configs/1" -H "Authorization: Bearer {{token}}"
 
 ### ============================ Gestión de usuarios (US046) ============================
 # Objetivo: Alta, bloqueo/desbloqueo y baja lógica de usuarios.
@@ -9108,7 +9106,7 @@ def _determine_initial_state(value:str):
 
 # Endpoint para crear usuario
 @app.route('/api/v1/admin/catalog/users', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USERS')
 def admin_user_create(current_user_id):
     data = request.get_json(silent=True) or {}
     correo = (data.get('correo') or '').strip()
@@ -9216,7 +9214,7 @@ def _change_user_state(user_id:int, target_state:int):
 
 # Endpoint para baja lógica usuario
 @app.route('/api/v1/admin/catalog/users/<int:user_id>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_USERS')
 def admin_user_delete(current_user_id, user_id):
     conn=None
     try:
@@ -9233,13 +9231,9 @@ def admin_user_delete(current_user_id, user_id):
             if conn: conn.close()
         except Exception: pass
 
-
-
-
-
 # Endpoint para modificar usuario
 @app.route('/api/v1/admin/catalog/users/<int:user_id>', methods=['PUT'])
-@requires_permission('EDIT_USERS')
+@requires_permission('MANAGE_USERS')
 def admin_user_update(current_user_id, user_id):
     conn = None
     try:
@@ -9289,20 +9283,6 @@ def admin_user_update(current_user_id, user_id):
 # curl -X PUT "{{baseURL}}/api/v1/admin/catalog/users/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"grupos\":[1,2],\"idEstado\":1}"
 
 
-
-
-# cURL ejemplos US046 (token Hola):
-# Crear usuario activo:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"correo\":\"juan.perez@example.com\",\"dni\":\"12345678\",\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"fechaNac\":\"1990-01-15\",\"idGenero\":1,\"idLocalidad\":1,\"estadoInicial\":\"activo\"}"
-# Crear usuario bloqueado inicialmente:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"correo\":\"ana.lopez@example.com\",\"dni\":\"87654321\",\"nombre\":\"Ana\",\"apellido\":\"Lopez\",\"fechaNac\":\"1985-03-20\",\"idGenero\":2,\"idLocalidad\":2,\"estadoInicial\":\"inactivo\"}"
-# Bloquear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users/1/block" -H "Authorization: Bearer {{token}}"
-# Desbloquear:
-# curl -X POST "{{baseURL}}/api/v1/admin/catalog/users/1/unblock" -H "Authorization: Bearer {{token}}"
-# Baja lógica:
-# curl -X DELETE "{{baseURL}}/api/v1/admin/catalog/users/1" -H "Authorization: Bearer {{token}}"
-
 # ============================= Gestion de permisos de grupo (US047)  ============================
 # Objetivo: Asignar y remover permisos a grupos.
 # Tablas involucradas: permiso (idPermiso, nombrePermiso, descripcion), grupopermiso (idGrupoPermiso, idGrupo, idPermiso, fechaInicio, fechaFin)
@@ -9313,7 +9293,7 @@ def admin_user_update(current_user_id, user_id):
 #  ERR1: El grupo ya tiene asignado el permiso.
 #  ERR2: El grupo no tiene asignado el permiso.
 @app.route('/api/v1/admin/catalog/groups/<int:grupo_id>/permissions/<int:perm_id>', methods=['POST'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUP_PERMISSIONS')
 def admin_group_permission_add(current_user_id, grupo_id, perm_id):
     conn = None
     try:
@@ -9336,7 +9316,7 @@ def admin_group_permission_add(current_user_id, grupo_id, perm_id):
         except Exception: pass
 
 @app.route('/api/v1/admin/catalog/groups/<int:grupo_id>/permissions/<int:perm_id>', methods=['DELETE'])
-@requires_permission('ADMIN_PANEL')
+@requires_permission('MANAGE_GROUP_PERMISSIONS')
 def admin_group_permission_remove(current_user_id, grupo_id, perm_id):
     conn = None
     try:
