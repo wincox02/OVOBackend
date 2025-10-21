@@ -456,6 +456,92 @@ def whoami(current_user_id):
 
 # ============================ ADMIN: Gestión de perfiles (US003) ============================
 
+def obtener_permisos_de_grupo_de_usuario(user_id: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+                        """
+                        SELECT DISTINCT p.nombrePermiso
+                        FROM permiso p
+                        JOIN permisogrupo pg ON pg.idPermiso = p.idPermiso
+                        JOIN usuariogrupo ug ON ug.idGrupo = pg.idGrupo
+                        WHERE ug.idUsuario = %s
+                            AND (ug.fechaFin IS NULL OR ug.fechaFin > NOW())
+                            AND (pg.fechaFin IS NULL OR pg.fechaFin > NOW())
+                            AND (p.fechaFin IS NULL OR p.fechaFin > NOW())
+                        """,
+                        (user_id,)
+        )
+        rows = cur.fetchall() or []
+        return [r['nombrePermiso'] for r in rows]
+    except Exception as e:
+        log(f"obtener_permisos_de_grupo_de_usuario error: {e}\n{traceback.format_exc()}")
+        return []
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+def obtener_permisos_directos_de_usuario(user_id: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+                        """
+                        SELECT DISTINCT p.nombrePermiso
+                        FROM permiso p
+                        JOIN usuariopermiso up ON up.idPermiso = p.idPermiso
+                        WHERE up.idUsuario = %s
+                            AND (up.fechaFin IS NULL OR up.fechaFin > NOW())
+                            AND (p.fechaFin IS NULL OR p.fechaFin > NOW())
+                        """,
+                        (user_id,)
+        )
+        rows = cur.fetchall() or []
+        return [r['nombrePermiso'] for r in rows]
+    except Exception as e:
+        log(f"obtener_permisos_directos_de_usuario error: {e}\n{traceback.format_exc()}")
+        return []
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+def obtener_grupos_de_usuario(user_id: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT g.nombreGrupo
+            FROM grupo g
+            JOIN usuariogrupo ug ON ug.idGrupo = g.idGrupo
+            WHERE ug.idUsuario = %s
+              AND (ug.fechaFin IS NULL OR ug.fechaFin > NOW())
+              AND (g.fechaFin IS NULL OR g.fechaFin > NOW())
+            """,
+            (user_id,)
+        )
+        rows = cur.fetchall() or []
+        return [r['nombreGrupo'] for r in rows]
+    except Exception as e:
+        log(f"obtener_grupos_de_usuario error: {e}\n{traceback.format_exc()}")
+        return []
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
 # Endpoint para listar todos los usuarios
 @app.route('/api/v1/admin/users', methods=['GET'])
 @requires_permission('MANAGE_PROFILE')
@@ -480,18 +566,17 @@ def admin_list_users(current_user_id):
             """
         )
         rows = cur.fetchall() or []
-        def parse_grupos(s):
-            if not s:
-                return []
-            return [p for p in (s or '').split(',') if p]
+        
         data = [
             {
                 "id": r['idUsuario'],
                 "nombre": r.get('nombre'),
                 "apellido": r.get('apellido'),
                 "mail": r.get('mail'),
-                "grupos": parse_grupos(r.get('grupos')),
+                "grupos": obtener_grupos_de_usuario(r['idUsuario']),
                 "estado": r.get('estado') or 'Desconocido',
+                "permisos_de_grupo": obtener_permisos_de_grupo_de_usuario(r['idUsuario']),
+                "permisos_directos": obtener_permisos_directos_de_usuario(r['idUsuario']),
             }
             for r in rows
         ]
@@ -873,15 +958,14 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
     """
     data = request.get_json(silent=True) or {}
     selected = data.get('permisos')
+    # Debe venir una lista (puede ser vacía -> significa quitar todos los permisos directos)
     if not isinstance(selected, list):
-        return jsonify({"errorCode": "ERR1", "message": "error, se debe agregar al menos un permiso"}), 400
-    # Normalizar y deduplicar
+        return jsonify({"errorCode": "ERR1", "message": "Lista de permisos inválida"}), 400
+    # Normalizar y deduplicar (lista vacía permitida)
     try:
         selected_ids = sorted(set(int(x) for x in selected))
     except Exception:
         return jsonify({"errorCode": "ERR1", "message": "Lista de permisos inválida"}), 400
-    if len(selected_ids) == 0:
-        return jsonify({"errorCode": "ERR1", "message": "error, se debe agregar al menos un permiso"}), 400
 
     conn = mysql.connector.connect(**DB_CONFIG)
     try:
@@ -890,12 +974,13 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
         cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
         if not cur.fetchone():
             return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
-        # Validar permisos existen
-        in_clause = ','.join(['%s'] * len(selected_ids))
-        cur.execute(f"SELECT COUNT(*) as total FROM permiso WHERE idPermiso IN ({in_clause})", tuple(selected_ids))
-        count = cur.fetchone()['total']
-        if count != len(selected_ids):
-            return jsonify({"errorCode": "ERR1", "message": "Algún permiso no existe"}), 400
+        # Validar permisos existen SOLO si se enviaron permisos
+        if selected_ids:
+            in_clause = ','.join(['%s'] * len(selected_ids))
+            cur.execute(f"SELECT COUNT(*) as total FROM permiso WHERE idPermiso IN ({in_clause})", tuple(selected_ids))
+            count = cur.fetchone()['total']
+            if count != len(selected_ids):
+                return jsonify({"errorCode": "ERR1", "message": "Algún permiso no existe"}), 400
 
         # Permisos actuales activos
         cur.execute(
@@ -904,12 +989,13 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
         )
         current_ids = sorted([r['idPermiso'] for r in (cur.fetchall() or [])])
 
+        # Calcular diferencias. Si selected_ids está vacío -> to_add = [], to_close = todos los actuales
         to_add = [pid for pid in selected_ids if pid not in current_ids]
         to_close = [pid for pid in current_ids if pid not in selected_ids]
 
-        # validar si ambas listas son vacias dar error que los permisos enviados son los actuales del usuario
+        # Si no hay cambios, devolver error indicando que no hay modificaciones
         if not to_add and not to_close:
-            return jsonify({"errorCode": "ERR1", "message": "Los permisos enviados son los actuales del usuario"}), 400
+            return jsonify({"errorCode": "ERR1", "message": "No hay cambios en los permisos del usuario"}), 400
 
         cur = conn.cursor()
         # Inactivar los que sobran
@@ -2858,7 +2944,7 @@ def user_restart_test(current_user_id):
 # Lista de carreras con búsqueda opcional (?search=)
 @app.route('/api/v1/careers', methods=['GET'])
 @requires_permission("USER_VIEW_CAREERS")
-def careers_list():
+def careers_list(current_user_id):
     conn = None
     try:
         search = (request.args.get('search') or '').strip()
@@ -2904,7 +2990,7 @@ def careers_list():
 # Consultar carreraInstitucion
 @app.route('/api/v1/career/institutions', methods=['GET'])
 @requires_permission("USER_VIEW_CAREERS")
-def careers_institutions():
+def careers_institutions(current_user_id):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -2955,7 +3041,7 @@ def careers_institutions():
 # Instituciones que dictan una carrera
 @app.route('/api/v1/careers/<int:id_carrera>/institutions', methods=['GET'])
 @requires_permission("USER_VIEW_CAREERS")
-def career_institutions(id_carrera: int):
+def career_institutions(current_user_id, id_carrera: int):
     conn = None
     try:
         search = (request.args.get('search') or '').strip()
@@ -3024,7 +3110,7 @@ def career_institutions(id_carrera: int):
 # Detalle de una carrera en institución (ruta completa con carrera)
 @app.route('/api/v1/careers/<int:id_carrera>/institutions/<int:id_ci>', methods=['GET'])
 @requires_permission("USER_VIEW_CAREERS")
-def career_institution_detail(id_carrera: int, id_ci: int):
+def career_institution_detail(current_user_id, id_carrera: int, id_ci: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -3112,7 +3198,7 @@ def career_institution_detail(id_carrera: int, id_ci: int):
 # Alias: detalle por idCarreraInstitucion (compatibilidad con US012 consultarCarreraPath)
 @app.route('/api/v1/careers/<int:id_ci>', methods=['GET'])
 @requires_permission("USER_VIEW_CAREERS")
-def career_institution_detail_alias(id_ci: int):
+def career_institution_detail_alias(current_user_id, id_ci: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -3310,7 +3396,7 @@ def careers_unmark_interest(current_user_id: int, id_ci: int):
 # Lista de instituciones con filtros: ?search=, ?tipo=, ?tipoId=, ?localidad=, ?provincia=, ?pais=
 @app.route('/api/v1/institutions', methods=['GET'])
 @requires_permission("USER_VIEW_INSTITUTIONS")
-def institutions_list():
+def institutions_list(current_user_id):
     conn = None
     try:
         args = request.args
@@ -3416,7 +3502,7 @@ def institutions_list():
 # Detalle de institución con sus carreras disponibles
 @app.route('/api/v1/institutions/<int:id_institucion>', methods=['GET'])
 @requires_permission("USER_VIEW_INSTITUTIONS")
-def institution_detail(id_institucion: int):
+def institution_detail(current_user_id, id_institucion: int):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -9180,7 +9266,9 @@ def admin_user_create(current_user_id):
                 cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (new_id, int(grupo_id)))
             except Exception:
                 pass  # si falla grupo no se aborta creación
-        
+        # Enviar correo con contraseña temporal al usuario creado
+        send_email(correo, "Bienvenido a OVO. Usuario creado por administrador", f"""Sea bienvenido a OVO.\n\nSu usuario ha sido creado por un administrador del sistema.\n\nSus credenciales son:\nUsuario: {correo}\nContraseña temporal: {temp_pass}\n\nPor favor, cambie su contraseña en el primer inicio de sesión.\n\nSaludos,\nEquipo de OVO.""")
+
         conn.commit()
         return jsonify({'ok':True,'idUsuario':new_id,'passwordTemporal':temp_pass}), 201
     except Exception as e:
@@ -9347,5 +9435,3 @@ def admin_group_permission_remove(current_user_id, grupo_id, perm_id):
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-
-
