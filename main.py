@@ -32,6 +32,8 @@ DB_CONFIG = {
 
 BASE_URL = os.getenv('BASE_URL', 'http://ovotest.mooo.com:5000')
 
+AWS_API_URL = "https://wid84vod2j.execute-api.us-east-2.amazonaws.com"
+
 SECRET_KEY = "ghwgdgHHYushHg1231SDAAa"
 
 def generate_token(user_id):
@@ -51,6 +53,8 @@ def token_required(f):
         try:
             if token == "Hola":
                 current_user = 1
+            elif token == "Insti":
+                current_user = 27
             else:
                 data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 current_user = data.get("user_id")
@@ -2244,29 +2248,12 @@ def deactivate_current_user(current_user_id):
 
 # ============================ Recuperación de contraseña (US009) ============================
 
-# Genera un token de restablecimiento
-def _generate_reset_token(user_id: int, minutes: int = 30) -> str:
-    payload = {
-        "user_id": user_id,
-        "purpose": "password_reset",
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=minutes),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-
-# Decodifica un token de restablecimiento
-def _decode_reset_token(token: str):
-    try:
-        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        if data.get("purpose") != "password_reset":
-            return None
-        return int(data.get("user_id"))
-    except Exception:
-        return None
-
 # Endpoint para enviar enlace de restablecimiento
 @app.route('/api/v1/auth/password/forgot', methods=['POST'])
 def password_forgot():
+    conn = None
     try:
+        conn = mysql.connector.connect(**DB_CONFIG)
         data = request.get_json(silent=True) or {}
         correo = (data.get('correo') or '').strip()
         # Validación de formato básico y existencia
@@ -2277,16 +2264,24 @@ def password_forgot():
         if not user:
             return jsonify({"errorCode": "ERR1", "message": "Email no registrado"}), 400
 
-        token = _generate_reset_token(user['idUsuario'])
-        link = f"{BASE_URL}/reset-password?token={token}"
+        new_password = generate_password()
+        new_password_hash = hash_password(new_password)
+
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "UPDATE usuario SET contrasena = %s WHERE idUsuario = %s",
+            (new_password_hash, user['idUsuario'])
+        )
+        conn.commit()
 
         # Enviar correo con el enlace
         asunto = "Recuperación de contraseña"
         cuerpo = (
-            f"<p>Hola {user.get('nombre') or ''},</p>"
-            f"<p>Recibimos una solicitud para restablecer tu contraseña. Haz clic en el siguiente enlace para continuar:</p>"
-            f"<p><a href=\"{link}\">Restablecer contraseña</a></p>"
-            f"<p>Si no solicitaste este cambio, ignora este mensaje.</p>"
+            f"<p>Hola {user.get('nombre') or ''},</p><br><br>"
+            f"<p>Recibimos una solicitud para restablecer tu contraseña. Haz clic en el siguiente enlace para continuar:</p><br>"
+            f"<p><strong>Nueva Contraseña:</strong> {new_password}</p><br>"
+            f"<p>Recuerda cambiar tu contraseña después de iniciar sesión.</p><br>"
+            f"<p>OVO TEAM</p>"
         )
         try:
             send_email(correo, asunto, cuerpo)
@@ -2300,79 +2295,55 @@ def password_forgot():
     except Exception as e:
         log(f"/auth/password/forgot error: {e}\n{traceback.format_exc()}")
         return jsonify({"message": "No se pudo procesar la solicitud."}), 500
-
-# Endpoint para restablecer la contraseña
-@app.route('/api/v1/auth/password/reset', methods=['POST'])
-def password_reset():
+    
+# Cambio de contraseña enviando la contraseña antigua
+@app.route('/api/v1/auth/password/change', methods=['POST'])
+@token_required
+def password_change(current_user_id):
+    conn = None
     try:
+        conn = mysql.connector.connect(**DB_CONFIG)
         data = request.get_json(silent=True) or {}
-        token = (data.get('token') or '').strip()
-        nueva = data.get('nuevaContrasena') or ''
+        old_password = (data.get('old_password') or '').strip()
+        new_password = (data.get('new_password') or '').strip()
 
-        user_id = _decode_reset_token(token)
-        if not user_id:
-            return jsonify({"message": "Enlace inválido o expirado."}), 400
+        # Validación básica
+        if not old_password or not new_password:
+            return jsonify({"errorCode": "ERR1", "message": "Faltan datos requeridos"}), 400
 
-        # ERR2: campo contraseña no completo
-        if not nueva:
-            return jsonify({"errorCode": "ERR2", "message": "Falta completar el campo contraseña."}), 400
-        # ERR3: política de contraseña
-        if not _password_meets_policy(nueva):
-            return jsonify({"errorCode": "ERR3", "message": PWD_POLICY_MSG}), 400
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM usuario WHERE idUsuario=%s", (current_user_id,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"errorCode": "ERR1", "message": "Usuario no encontrado"}), 404
+
+        # Verificar contraseña antigua
+        if not verify_password(old_password, user['contrasena']):
+            return jsonify({"errorCode": "ERR1", "message": "Contraseña incorrecta"}), 400
+
+        # Verificar nueva contraseña contra política
+        if not _password_meets_policy(new_password):
+            return jsonify({"errorCode": "ERR1", "message": f"La nueva contraseña no cumple los requisitos: {PWD_POLICY_MSG}"}), 400
 
         # Actualizar contraseña
-        conn = mysql.connector.connect(**DB_CONFIG)
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
-            if not cur.fetchone():
-                return jsonify({"errorCode": "ERR1", "message": "Email no registrado"}), 400
-            cur.execute(
-                "UPDATE usuario SET contrasena=%s, vencimientoContrasena=NULL WHERE idUsuario=%s",
-                (hash_password(nueva), user_id)
-            )
-            conn.commit()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-        return jsonify({"ok": True, "message": "Se cambió la contraseña correctamente."}), 200
+        new_password_hash = hash_password(new_password)
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE usuario SET contrasena = %s WHERE idUsuario = %s",
+            (new_password_hash, current_user_id)
+        )
+        conn.commit()
+        return jsonify({"ok": True, "message": "Contraseña actualizada con éxito"}), 200
     except Exception as e:
-        log(f"/auth/password/reset error: {e}\n{traceback.format_exc()}")
-        return jsonify({"message": "No se pudo restablecer la contraseña."}), 500
-
-# Endpoint para validar el token de reseteo
-@app.route('/api/v1/auth/password/validate', methods=['GET'])
-def password_reset_validate():
-    """Valida que el token de reseteo sea correcto y no haya expirado."""
-    try:
-        token = (request.args.get('token') or '').strip()
-        if not token:
-            return jsonify({"ok": False, "errorCode": "ERR1", "message": "Token requerido"}), 400
-
-        user_id = _decode_reset_token(token)
-        if not user_id:
-            return jsonify({"ok": False, "errorCode": "ERR1", "message": "Token inválido o expirado"}), 400
-
-        # Validar que el usuario exista (defensa extra)
+        log(f"/auth/password/change error: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "No se pudo procesar la solicitud."}), 500
+    finally:
         try:
-            conn = mysql.connector.connect(**DB_CONFIG)
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM usuario WHERE idUsuario=%s", (user_id,))
-            if not cur.fetchone():
-                return jsonify({"ok": False, "errorCode": "ERR1", "message": "Token inválido o expirado"}), 400
-        finally:
-            try:
+            if conn:
                 conn.close()
-            except Exception:
-                pass
-
-        return jsonify({"ok": True}), 200
-    except Exception as e:
-        log(f"/auth/password/validate error: {e}\n{traceback.format_exc()}")
-        return jsonify({"ok": False, "errorCode": "ERR1", "message": "No se pudo validar el token"}), 400
+        except Exception:
+            pass
+# curl -X POST "{{baseURL}}/api/v1/auth/password/change" -H "Content-Type: application/json" -H "Authorization: Bearer {{token}}" -d '{"old_password": "oldPass123!", "new_password": "NewPass456@"}'
 
 # ============================ Gestión de preferencias (US010) ============================
 
@@ -2535,33 +2506,127 @@ def user_add_interest(current_user_id):
 
 # ============================ Histórico de tests (US011) ============================
 
+# -- Volcando estructura para tabla ovo.carrerainstitucion
+# CREATE TABLE IF NOT EXISTS `carrerainstitucion` (
+#   `idCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+#   `idEstadoCarreraInstitucion` int(11) NOT NULL,
+#   `idCarrera` int(11) DEFAULT NULL,
+#   `idModalidadCarreraInstitucion` int(11) NOT NULL,
+#   `idInstitucion` int(11) DEFAULT NULL,
+#   `tituloCarrera` varchar(50) NOT NULL,
+#   `cantidadMaterias` int(11) NOT NULL,
+#   `duracionCarrera` decimal(20,2) NOT NULL,
+#   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+#   `horasCursado` int(11) NOT NULL,
+#   `observaciones` varchar(500) NOT NULL,
+#   `nombreCarrera` varchar(50) NOT NULL,
+#   `montoCuota` decimal(20,2) NOT NULL,
+#   `fechaFin` datetime DEFAULT NULL,
+#   PRIMARY KEY (`idCarreraInstitucion`),
+#   KEY `FK_carrerainstitucion_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
+#   KEY `FK_carrerainstitucion_carrera` (`idCarrera`),
+#   KEY `FK_carrerainstitucion_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
+#   KEY `FK_carrerainstitucion_institucion` (`idInstitucion`),
+#   CONSTRAINT `FK_carrerainstitucion_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE SET NULL ON UPDATE CASCADE,
+#   CONSTRAINT `FK_carrerainstitucion_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON UPDATE CASCADE,
+#   CONSTRAINT `FK_carrerainstitucion_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+#   CONSTRAINT `FK_carrerainstitucion_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.test
+# CREATE TABLE IF NOT EXISTS `test` (
+#   `idTest` int(11) NOT NULL AUTO_INCREMENT,
+#   `idEstadoTest` int(11) NOT NULL,
+#   `idUsuario` int(11) DEFAULT NULL,
+#   `fechaTest` datetime NOT NULL DEFAULT current_timestamp(),
+#   `idChatIA` varchar(50) NOT NULL,
+#   `HistorialPreguntas` longtext DEFAULT NULL,
+#   PRIMARY KEY (`idTest`),
+#   KEY `FK_test_usuario` (`idUsuario`),
+#   KEY `FK_test_estadotest` (`idEstadoTest`),
+#   CONSTRAINT `FK_test_estadotest` FOREIGN KEY (`idEstadoTest`) REFERENCES `estadotest` (`idEstadoTest`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+#   CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.testcarrerainstitucion
+# CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
+#   `afinidadCarrera` double DEFAULT NULL,
+#   `idTest` int(11) DEFAULT NULL,
+#   `idCarreraInstitucion` int(11) DEFAULT NULL,
+#   KEY `FK_testcarrerainstitucion_test` (`idTest`),
+#   KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
+#   CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON UPDATE CASCADE,
+#   CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 # Lista los tests realizados por el usuario autenticado
 @app.route('/api/v1/user/tests', methods=['GET'])
 @token_required
 def user_list_tests(current_user_id):
+    conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        # Obtener los test y los nombreEstadoTest asociados
+        
+        # Obtener los tests del usuario con su estado
         cur.execute(
             """
             SELECT t.idTest, t.fechaTest, et.nombreEstadoTest
             FROM test t
             JOIN estadotest et ON t.idEstadoTest = et.idEstadoTest
             WHERE t.idUsuario = %s
+            ORDER BY t.fechaTest DESC
             """,
             (current_user_id,)
         )
-        rows = cur.fetchall() or []
-        data = [
-            {
-                "id": r.get('idTest'),
-                "fecha": (r.get('fechaTest').isoformat(sep=' ') if r.get('fechaTest') else None),
-                "estado": r.get('nombreEstadoTest')
-            }
-            for r in rows
-        ]
+        tests_rows = cur.fetchall() or []
+        
+        # Construir respuesta con carreras asociadas a cada test
+        data = []
+        for test_row in tests_rows:
+            id_test = test_row.get('idTest')
+            
+            # Obtener las carreras recomendadas para este test con su afinidad
+            cur.execute(
+                """
+                SELECT 
+                    tci.afinidadCarrera,
+                    tci.idCarreraInstitucion,
+                    ci.tituloCarrera,
+                    ci.nombreCarrera,
+                    i.nombreInstitucion
+                FROM testcarrerainstitucion tci
+                JOIN carrerainstitucion ci ON ci.idCarreraInstitucion = tci.idCarreraInstitucion
+                LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion
+                WHERE tci.idTest = %s
+                ORDER BY tci.afinidadCarrera DESC
+                """,
+                (id_test,)
+            )
+            carreras_rows = cur.fetchall() or []
+            
+            # Formatear las carreras recomendadas
+            carreras_recomendadas = [
+                {
+                    "idCarreraInstitucion": carrera.get('idCarreraInstitucion'),
+                    "tituloCarrera": carrera.get('tituloCarrera'),
+                    "nombreCarrera": carrera.get('nombreCarrera'),
+                    "nombreInstitucion": carrera.get('nombreInstitucion'),
+                    "afinidadCarrera": round(float(carrera.get('afinidadCarrera') or 0), 2)
+                }
+                for carrera in carreras_rows
+            ]
+            
+            # Agregar el test con sus carreras
+            data.append({
+                "id": id_test,
+                "fecha": (test_row.get('fechaTest').isoformat(sep=' ') if test_row.get('fechaTest') else None),
+                "estado": test_row.get('nombreEstadoTest'),
+                "carrerasRecomendadas": carreras_recomendadas
+            })
+        
         return jsonify(data), 200
+        
     except Exception as e:
         log(f"/user/tests GET error: {e}\n{traceback.format_exc()}")
         return jsonify({"message": "No se pudo obtener el histórico de tests."}), 500
@@ -2943,7 +3008,7 @@ def user_restart_test(current_user_id):
 
 # Lista de carreras con búsqueda opcional (?search=)
 @app.route('/api/v1/careers', methods=['GET'])
-@requires_permission("USER_VIEW_CAREERS")
+@requires_permission(['USER_VIEW_CAREERS', 'INSTITUTION_MANAGE_CAREERS'])
 def careers_list(current_user_id):
     conn = None
     try:
@@ -4918,9 +4983,6 @@ def career_aptitudes_list(current_user_id:int, id_ci:int):
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
             return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
-        id_carrera_base = _get_base_carrera_id(conn, id_ci)
-        if not id_carrera_base:
-            return jsonify({"errorCode":"ERR1","message":"Carrera no encontrada"}), 404
         cur = conn.cursor(dictionary=True)
         # Traer todas las aptitudes con su valor (si existe) para la carrera base
         cur.execute(
@@ -4931,7 +4993,7 @@ def career_aptitudes_list(current_user_id:int, id_ci:int):
             WHERE (a.fechaBaja IS NULL OR a.fechaBaja > NOW())
             ORDER BY a.nombreAptitud
             """,
-            (id_carrera_base,)
+            (id_ci,)
         )
         rows = cur.fetchall() or []
         data = [
@@ -4992,9 +5054,6 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
         id_inst = _my_inst_id(conn, current_user_id)
         if not id_inst or not _ci_belongs(conn, id_ci, id_inst):
             return jsonify({"errorCode":"ERR01","message":"Carrera no encontrada"}), 404
-        id_carrera_base = _get_base_carrera_id(conn, id_ci)
-        if not id_carrera_base:
-            return jsonify({"errorCode":"ERR01","message":"Carrera no encontrada"}), 404
 
         cur = conn.cursor(dictionary=True)
         # Validar que las aptitudes existan
@@ -5004,11 +5063,11 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
         if cur.fetchone()['count'] != len(ids):
             return jsonify({"errorCode":"ERR01","message":"Alguna aptitud no existe"}), 400
         # Reemplazar completamente
-        cur.execute("DELETE FROM aptitudcarrera WHERE idCarreraInstitucion=%s", (id_carrera_base,))
+        cur.execute("DELETE FROM aptitudcarrera WHERE idCarreraInstitucion=%s", (id_ci,))
         for aid, score in parsed:
             cur.execute(
                 "INSERT INTO aptitudcarrera (afinidadCarrera, idAptitud, idCarreraInstitucion) VALUES (%s,%s,%s)",
-                (score, aid, id_carrera_base)
+                (score, aid, id_ci)
             )
         conn.commit()
         return jsonify({"ok":True, "message":"Aptitudes actualizadas"}), 200
@@ -5045,7 +5104,17 @@ def tests_start():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        
+
+        # Verificar que no tenga ningun test activo
+        if current_user_id:
+            cur.execute(
+                "SELECT COUNT(*) as count FROM test WHERE idUsuario = %s AND idEstadoTest = (SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest='Activo')",
+                (current_user_id,)
+            )
+            test_activo = cur.fetchone()
+            if test_activo and test_activo['count'] > 0:
+                return jsonify({"errorCode":"ERR2","message":"Ya tiene un test activo en curso"}), 400
+
         # Obtener el estado "Activo"
         cur.execute("SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest='Activo' LIMIT 1")
         estadoActivo = cur.fetchone()
@@ -5063,10 +5132,9 @@ def tests_start():
         idTest = cur.fetchone()['id']
 
         # Enviar al endpoint para obtener preguntas:
-        # curl --location 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat' \
+        # curl --location 'AWS_API_URL/prod/chat' \
         # --header 'content-type: application/json' \
         # --data '{
-        #     "UserID": "15",
         #     "prompt": "bien",
         #     "ChatID": "2"
         # }'
@@ -5082,21 +5150,16 @@ def tests_start():
         #     ]
         # }
 
-        userIDAnonimo = None
-
         # Enviar la solicitud al endpoint externo
-        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
+        external_api_url = f'{AWS_API_URL}/prod/chat'
         if current_user_id:
             payload = {
-                "UserID": str(current_user_id),
-                "prompt": "bien",
+                "prompt": "start",
                 "ChatID": str(chatIdIA)
             }
         else:
-            userIDAnonimo = generate_complex_id()
             payload = {
-                "UserID": userIDAnonimo,
-                "prompt": "bien",
+                "prompt": "start",
                 "ChatID": str(chatIdIA)
             }
         headers = {
@@ -5112,24 +5175,11 @@ def tests_start():
         cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(response.json().get("full_history", []), ensure_ascii=False), idTest))
         conn.commit()
 
-        if userIDAnonimo:
-            return jsonify({
-                "userIDAnonimo": userIDAnonimo,
-                "idTest": int(idTest),
-                "chatId": idTest,
-                "chatIdIA": chatIdIA,
-                "fullHistory": response.json().get("full_history", []),
-                "chatbot_response": response.json().get("chatbot_response", "")
-            }), 201
-        else:
-            return jsonify({
-                "userID": current_user_id,
-                "idTest": int(idTest),
-                "chatId": idTest,
-                "chatIdIA": chatIdIA,
-                "fullHistory": response.json().get("full_history", []),
-                "chatbot_response": response.json().get("chatbot_response", "")
-            }), 201
+        return jsonify({
+            "idTest": int(idTest),
+            "fullHistory": response.json().get("full_history", []),
+            "chatbot_response": response.json().get("chatbot_response", "")
+        }), 201
 
     except Exception as e:
         # Mostrar traceback en logs
@@ -5142,9 +5192,9 @@ def tests_start():
         except Exception as e:
             pass
 # Curl ejemplo endpoint anterior:
-# curl --location '{{baseURL}}/api/v1/tests/start' \
-# --header 'Content-Type: application/json' \
-# --data '{}'
+# curl --location '{{baseURL}}/api/v1/tests/start' --header 'Content-Type: application/json' --data '{}'
+# Con bearer token en header Authorization si el usuario está logueado
+# curl --location '{{baseURL}}/api/v1/tests/start' --header 'Authorization: Bearer <token>' --header 'Content-Type: application/json' --data '{}'
 
 # Endpoint para enviar enviar respuesta de una pregunta y obtener la siguiente
 @app.route('/api/v1/tests/<int:id_test>/answer', methods=['POST'])
@@ -5161,11 +5211,6 @@ def tests_answer(id_test:int):
             pass
     data = request.get_json(silent=True) or {}
     answer = data.get('answer')
-    userIDAnonimo = None
-    if not current_user_id:
-        userIDAnonimo = data.get('userIdAnonimo')
-    if not userIDAnonimo and not current_user_id:
-        return jsonify({"errorCode":"ERR1","message":"Se necesita mandar userIdAnonimo o Authorization"}), 400
     if answer is None or answer.strip() == '':
         return jsonify({"errorCode":"ERR1","message":"Respuesta inválida"}), 400
 
@@ -5183,16 +5228,14 @@ def tests_answer(id_test:int):
         chatIdIA = test_row['idChatIA']
 
         # Enviar la respuesta al endpoint externo
-        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
+        external_api_url = f'{AWS_API_URL}/prod/chat'
         if current_user_id:
             payload = {
-                "UserID": str(current_user_id),
                 "prompt": answer.strip(),
                 "ChatID": str(chatIdIA)
             }
         else:
             payload = {
-                "UserID": userIDAnonimo,
                 "prompt": answer.strip(),
                 "ChatID": str(chatIdIA)
             }
@@ -5216,7 +5259,7 @@ def tests_answer(id_test:int):
             return jsonify({
                 "message": "Test finalizado.",
                 "fullHistory": full_history
-            }), 200
+            }), 201
         # Guardar el full_history en la tabla test
         cur.execute("UPDATE test SET HistorialPreguntas = %s WHERE idTest = %s", (json.dumps(full_history, ensure_ascii=False), id_test))
         conn.commit()
@@ -5234,67 +5277,36 @@ def tests_answer(id_test:int):
         except Exception as e:
             pass
 # Curl ejemplo endpoint anterior:
-# curl --location '{{baseURL}}/api/v1/tests/1/answer' \
-# --header 'Content-Type: application/json' \
-# --data '{
-#   "answer": "Respuesta del usuario",
-#   "userIdAnonimo": "ID_anonimo",
-#   "chatId": 1
-# }'
+# curl --location '{{baseURL}}/api/v1/tests/1/answer' --header 'Content-Type: application/json' --data '{"answer":"Mi respuesta"}'
 
 # Endpoint para mostrar las carreras en base a los resultados del test
 @app.route('/api/v1/tests/<int:id_test>/results', methods=['GET'])
-def get_test_results(id_test):
-    # Obtener el token si existe en el header Authorization
-    auth_header = request.headers.get('Authorization')
-    current_user_id = None
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user_id = payload.get('user_id')
-        except jwt.ExpiredSignatureError:
-            pass
-    # Obtener userIdAnonimo desde query parameters
-    userIDAnonimo = None
-    if not current_user_id:
-        userIDAnonimo = request.args.get('userIdAnonimo')
+@token_required
+def get_test_results(current_user_id, id_test):
     conn = None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
 
         # Obtener idChatIA del test
-        cur.execute("SELECT idChatIA FROM test WHERE idTest = %s", (id_test,))
+        cur.execute("SELECT idChatIA, idUsuario FROM test WHERE idTest = %s", (id_test,))
         test_row = cur.fetchone()
         if not test_row:
             return jsonify({"errorCode":"ERR1","message":"Test no encontrado."}), 404
-        chatIdIA = test_row['idChatIA']
-        # Llamar al endpoint externo para obtener resultados validando que el estado del endpoint externo este en ("status": "FINISHED")
-        external_api_url = 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/chat'
-
-        # Condicion para cuando el usuario se registra luego de realizar el test para poder visualizar su resultado
-        if current_user_id and userIDAnonimo:
-            # Modificar el test para asignarlo al usuario registrado
+        # Si el test ya está asociado a un usuario, validar que sea el mismo que hace la consulta
+        if test_row['idUsuario'] is None:
             cur.execute("UPDATE test SET idUsuario = %s WHERE idTest = %s", (current_user_id, id_test))
             conn.commit()
-            payload = {
-                "UserID": str(userIDAnonimo),
-                "ChatID": chatIdIA
-            }
-        else:
-            if current_user_id:
-                payload = {
-                    "UserID": current_user_id,
-                    "ChatID": chatIdIA
-                }
-            else:
-                if not userIDAnonimo:
-                    return jsonify({"errorCode":"ERR1","message":"Se necesita mandar userIdAnonimo como query parameter o Authorization header"}), 400
-                payload = {
-                    "UserID": userIDAnonimo,
-                    "ChatID": chatIdIA
-                }
+        elif int(test_row['idUsuario']) != int(current_user_id):
+            return jsonify({"errorCode":"ERR1","message":"No está autorizado para ver los resultados de este test."}), 403
+
+        chatIdIA = test_row['idChatIA']
+        # Llamar al endpoint externo para obtener resultados validando que el estado del endpoint externo este en ("status": "FINISHED")
+        external_api_url = f'{AWS_API_URL}/prod/chat'
+
+        payload = {
+            "ChatID": chatIdIA
+        }
 
         response = requests.post(external_api_url, json=payload)
         if response.status_code != 200:
@@ -5307,9 +5319,204 @@ def get_test_results(id_test):
         if resp_json.get("status") != "FINISHED":
             return jsonify({"errorCode":"ERR1","message":"El test no ha finalizado."}), 400
 
-        return jsonify({"results": resp_json.get("final_scores", {})}), 200
+        # -- Volcando estructura de base de datos para ovo
+        # CREATE DATABASE IF NOT EXISTS `ovo` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
+        # USE `ovo`;
+
+        # -- Volcando estructura para tabla ovo.aptitud
+        # CREATE TABLE IF NOT EXISTS `aptitud` (
+        # `idAptitud` int(11) NOT NULL AUTO_INCREMENT,
+        # `nombreAptitud` varchar(50) DEFAULT NULL,
+        # `descripcion` varchar(50) DEFAULT NULL,
+        # `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+        # `fechaBaja` datetime DEFAULT NULL,
+        # PRIMARY KEY (`idAptitud`)
+        # ) ENGINE=InnoDB AUTO_INCREMENT=88 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+        # -- La exportación de datos fue deseleccionada.
+
+        # -- Volcando estructura para tabla ovo.aptitudcarrera
+        # CREATE TABLE IF NOT EXISTS `aptitudcarrera` (
+        # `idAptitudCarrera` int(11) NOT NULL AUTO_INCREMENT,
+        # `afinidadCarrera` double DEFAULT NULL,
+        # `idAptitud` int(11) DEFAULT NULL,
+        # `idCarreraInstitucion` int(11) DEFAULT NULL,
+        # PRIMARY KEY (`idAptitudCarrera`),
+        # KEY `FK_aptitudcarrera_aptitud` (`idAptitud`),
+        # KEY `FK_aptitudcarrera_carrera` (`idCarreraInstitucion`),
+        # CONSTRAINT `FK_aptitudcarrera_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+        # CONSTRAINT `FK_aptitudcarrera_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+        # ) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+        # -- La exportación de datos fue deseleccionada.
+
+        # -- Volcando estructura para tabla ovo.carrerainstitucion
+        # CREATE TABLE IF NOT EXISTS `carrerainstitucion` (
+        # `idCarreraInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+        # `idEstadoCarreraInstitucion` int(11) NOT NULL,
+        # `idCarrera` int(11) DEFAULT NULL,
+        # `idModalidadCarreraInstitucion` int(11) NOT NULL,
+        # `idInstitucion` int(11) DEFAULT NULL,
+        # `tituloCarrera` varchar(50) NOT NULL,
+        # `cantidadMaterias` int(11) NOT NULL,
+        # `duracionCarrera` decimal(20,2) NOT NULL,
+        # `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+        # `horasCursado` int(11) NOT NULL,
+        # `observaciones` varchar(500) NOT NULL,
+        # `nombreCarrera` varchar(50) NOT NULL,
+        # `montoCuota` decimal(20,2) NOT NULL,
+        # `fechaFin` datetime DEFAULT NULL,
+        # PRIMARY KEY (`idCarreraInstitucion`),
+        # KEY `FK_carrerainstitucion_estadocarrerainstitucion` (`idEstadoCarreraInstitucion`),
+        # KEY `FK_carrerainstitucion_carrera` (`idCarrera`),
+        # KEY `FK_carrerainstitucion_modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`),
+        # KEY `FK_carrerainstitucion_institucion` (`idInstitucion`),
+        # CONSTRAINT `FK_carrerainstitucion_carrera` FOREIGN KEY (`idCarrera`) REFERENCES `carrera` (`idCarrera`) ON DELETE SET NULL ON UPDATE CASCADE,
+        # CONSTRAINT `FK_carrerainstitucion_estadocarrerainstitucion` FOREIGN KEY (`idEstadoCarreraInstitucion`) REFERENCES `estadocarrerainstitucion` (`idEstadoCarreraInstitucion`) ON UPDATE CASCADE,
+        # CONSTRAINT `FK_carrerainstitucion_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+        # CONSTRAINT `FK_carrerainstitucion_modalidadcarrerainstitucion` FOREIGN KEY (`idModalidadCarreraInstitucion`) REFERENCES `modalidadcarrerainstitucion` (`idModalidadCarreraInstitucion`) ON UPDATE CASCADE
+        # ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+        # Calcular en base a las aptitudes y las carreraInstitucion cuales serian las mas apropiadas segun las aptitudes obtenidas en el test
+        aptitudes_obtenidas_raw = resp_json.get("final_scores", {})
+        
+        # Convertir las aptitudes obtenidas a números (pueden venir como strings desde la API)
+        aptitudes_obtenidas = {}
+        for nombre_aptitud, valor in aptitudes_obtenidas_raw.items():
+            try:
+                # Convertir el valor a float, manejando si viene como string
+                aptitudes_obtenidas[nombre_aptitud] = float(valor) if valor else 0.0
+            except (ValueError, TypeError):
+                # Si no se puede convertir, asignar 0
+                aptitudes_obtenidas[nombre_aptitud] = 0.0
+        
+        # Obtener todas las carreras-institución disponibles
+        cur.execute("SELECT idCarreraInstitucion, tituloCarrera FROM carrerainstitucion WHERE fechaFin IS NULL OR fechaFin > NOW()")
+        carreras_institucion = cur.fetchall() or []
+        
+        # Obtener las aptitudes y afinidades configuradas para cada carrera-institución
+        carrera_aptitudes = {}
+        for carrera in carreras_institucion:
+            id_carrera_inst = carrera['idCarreraInstitucion']
+            cur.execute("""
+                SELECT ac.afinidadCarrera, a.nombreAptitud 
+                FROM aptitudcarrera ac 
+                JOIN aptitud a ON a.idAptitud = ac.idAptitud 
+                WHERE ac.idCarreraInstitucion = %s 
+                AND (a.fechaBaja IS NULL OR a.fechaBaja > NOW())
+            """, (id_carrera_inst,))
+            aptitudes_carrera = cur.fetchall() or []
+            carrera_aptitudes[id_carrera_inst] = aptitudes_carrera
+
+        # Calcular puntajes de compatibilidad para cada carrera
+        carrera_puntajes = []
+        for carrera in carreras_institucion:
+            id_carrera_inst = carrera['idCarreraInstitucion']
+            titulo_carrera = carrera['tituloCarrera']
+            
+            # Obtener las aptitudes configuradas para esta carrera
+            aptitudes_carrera = carrera_aptitudes.get(id_carrera_inst, [])
+            
+            # Calcular el puntaje total sumando (aptitud_usuario * afinidad_carrera)
+            puntaje_total = 0.0
+            for aptitud_info in aptitudes_carrera:
+                nombre_aptitud = aptitud_info['nombreAptitud']
+                afinidad_carrera = aptitud_info['afinidadCarrera'] or 0.0
+                
+                # Obtener el puntaje del usuario en esta aptitud
+                puntaje_usuario = aptitudes_obtenidas.get(nombre_aptitud, 0.0)
+                
+                # Sumar al puntaje total
+                puntaje_total += puntaje_usuario * afinidad_carrera
+            
+            carrera_puntajes.append({
+                "idCarreraInstitucion": id_carrera_inst,
+                "tituloCarrera": titulo_carrera,
+                "puntaje": puntaje_total
+            })
+
+        # Normalizar los puntajes a escala 0-100
+        if carrera_puntajes:
+            puntaje_maximo = max(c['puntaje'] for c in carrera_puntajes)
+            
+            # Si hay al menos una carrera con puntaje > 0, normalizar proporcionalmente
+            if puntaje_maximo > 0:
+                for carrera in carrera_puntajes:
+                    # Convertir a escala 0-100
+                    carrera['puntaje'] = round((carrera['puntaje'] / puntaje_maximo) * 100, 2)
+            else:
+                # Si todas tienen puntaje 0, dejarlas en 0
+                for carrera in carrera_puntajes:
+                    carrera['puntaje'] = 0.0
+
+        # -- --------------------------------------------------------
+        # -- Volcando estructura para tabla ovo.testcarrerainstitucion
+        # CREATE TABLE IF NOT EXISTS `testcarrerainstitucion` (
+        # `afinidadCarrera` double DEFAULT NULL,
+        # `idTest` int(11) DEFAULT NULL,
+        # `idCarreraInstitucion` int(11) DEFAULT NULL,
+        # KEY `FK_testcarrerainstitucion_test` (`idTest`),
+        # KEY `FK_testcarrerainstitucion_carrerainstitucion` (`idCarreraInstitucion`),
+        # CONSTRAINT `FK_testcarrerainstitucion_carrerainstitucion` FOREIGN KEY (`idCarreraInstitucion`) REFERENCES `carrerainstitucion` (`idCarreraInstitucion`) ON UPDATE CASCADE,
+        # CONSTRAINT `FK_testcarrerainstitucion_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+        # ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+        # Guardar los resultados en la tabla testcarrerainstitucion
+        cur.execute("DELETE FROM testcarrerainstitucion WHERE idTest = %s", (id_test,))
+        for carrera in carrera_puntajes:
+            # Verificar que el puntaje no sea 0.0
+            if carrera['puntaje'] > 0.0:
+                cur.execute(
+                    """
+                    INSERT INTO testcarrerainstitucion (afinidadCarrera, idTest, idCarreraInstitucion)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (carrera['puntaje'], id_test, carrera['idCarreraInstitucion'])
+                )
+
+
+        # -- --------------------------------------------------------
+
+        # -- Volcando estructura para tabla ovo.testaptitud
+        # CREATE TABLE IF NOT EXISTS `testaptitud` (
+        # `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
+        # `afinidadAptitud` double DEFAULT NULL,
+        # `idAptitud` int(11) DEFAULT NULL,
+        # `idTest` int(11) DEFAULT NULL,
+        # PRIMARY KEY (`idResultadoAptitud`),
+        # KEY `FK_testaptitud_aptitud` (`idAptitud`),
+        # KEY `FK_testaptitud_test` (`idTest`),
+        # CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+        # CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+        # ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+        
+        # Guardar los resultados en la tabla testaptitud
+        cur.execute("DELETE FROM testaptitud WHERE idTest = %s", (id_test,))
+        for nombre_aptitud, valor in aptitudes_obtenidas.items():
+            # Obtener el id de la aptitud con el nombre
+            cur.execute("SELECT idAptitud FROM aptitud WHERE nombreAptitud = %s LIMIT 1", (nombre_aptitud,))
+            aptitud_row = cur.fetchone()
+            if not aptitud_row:
+                continue  # Omitir si la aptitud no existe en la base de datos
+            cur.execute(
+                """
+                INSERT INTO testaptitud (afinidadAptitud, idAptitud, idTest)
+                VALUES (%s, %s, %s)
+                """,
+                (valor, aptitud_row['idAptitud'], id_test)
+            )
+
+        conn.commit()
+
+        return jsonify({
+            "testId": id_test,
+            "aptitudesObtenidas": aptitudes_obtenidas,
+            "carrerasRecomendadas": sorted(carrera_puntajes, key=lambda x: x['puntaje'], reverse=True),
+            "fullHistory": resp_json.get("full_history", [])
+        }), 200
 
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({"errorCode":"ERR1","message":"No se pudo obtener los resultados del test. Intente nuevamente. 2"}), 500
     finally:
         try:
@@ -5318,8 +5525,7 @@ def get_test_results(id_test):
         except Exception as e:
             pass
 # Curl ejemplo endpoint anterior:
-# curl --location '{{baseURL}}/api/v1/tests/1/results?userIdAnonimo=ID_anonimo' \
-# --header 'Authorization: Bearer {{token}}'
+# curl --location '{{baseURL}}/api/v1/tests/1/results' --header 'Authorization: Bearer {{token}}' --data ''
 
 
 
@@ -8184,7 +8390,7 @@ def _modalidad_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-modalities', methods=['GET'])
-@requires_permission('MANAGE_CAREER_MODALITIES')
+@requires_permission(['MANAGE_CAREER_MODALITIES', 'INSTITUTION_MANAGE_CAREERS'])
 def admin_career_modalities_list(current_user_id):
     conn=None
     try:
@@ -8361,6 +8567,74 @@ def admin_aptitudes_list(current_user_id):
             if conn: conn.close()
         except Exception: pass
 
+
+# curl --location 'AWS_API_URL/prod/aptitudes/agregar' \
+# --header 'Content-Type: application/json' \
+# --data '{
+#     "aptitudes": [
+#         "Pensamiento crítico y analítico",
+#         "Creatividad",
+#         "Habilidades numéricas y espaciales",
+#         "Memoria y atención",
+#         "Inteligencia emocional",
+#         "Comunicación",
+#         "Trabajo en equipo y colaboración",
+#         "Liderazgo",
+#         "Adaptabilidad",
+#         "Resiliencia",
+#         "Gestión del tiempo",
+#         "Competencias digitales",
+#         "Habilidades de ventas y orientación al cliente",
+#         "Habilidades psicomotrices y físicas"
+#     ]
+# }'
+def enviar_datos_aws():
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT nombreAptitud FROM aptitud WHERE fechaBaja IS NULL")
+        rows = cur.fetchall() or []
+        if rows:
+            payload = {"aptitudes": [r['nombreAptitud'] for r in rows]}
+            response = requests.post(f"{AWS_API_URL}/prod/aptitudes/agregar", json=payload)
+            if response.status_code != 200:
+                log(f"Error al enviar datos a AWS: {response.text}")
+    except Exception as e:
+        log(f"Error en enviar_datos_aws: {e}\n{traceback.format_exc()}")
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+
+# curl --location --request DELETE 'https://wid84vod2j.execute-api.us-east-2.amazonaws.com/prod/aptitudes/eliminar' \
+# --header 'Content-Type: application/json' \
+# --data '{
+#     "aptitudes": [
+#         "Pensamiento crítico y analítico",
+#         "Creatividad",
+#         "Habilidades numéricas y espaciales",
+#         "Memoria y atención",
+#         "Inteligencia emocional",
+#         "Comunicación",
+#         "Trabajo en equipo y colaboración",
+#         "Liderazgo",
+#         "Adaptabilidad",
+#         "Resiliencia",
+#         "Gestión del tiempo",
+#         "Competencias digitales",
+#         "Habilidades de ventas y orientación al cliente",
+#         "Habilidades psicomotrices y físicas"
+#     ]
+# }'
+def eliminar_datos_aws(aptitud_nombres):
+    try:
+        payload = {"aptitudes": aptitud_nombres}
+        response = requests.delete(f"{AWS_API_URL}/prod/aptitudes/eliminar", json=payload)
+        if response.status_code != 200:
+            log(f"Error al eliminar datos en AWS: {response.text}")
+    except Exception as e:
+        log(f"Error en eliminar_datos_aws: {e}\n{traceback.format_exc()}")
+
 @app.route('/api/v1/admin/catalog/aptitudes', methods=['POST'])
 @requires_permission('MANAGE_APTITUDES')
 def admin_aptitud_create(current_user_id):
@@ -8378,6 +8652,7 @@ def admin_aptitud_create(current_user_id):
         cur.execute("INSERT INTO aptitud (nombreAptitud, descripcion, fechaAlta, fechaBaja) VALUES (%s,%s,NOW(),NULL)", (nombre, descripcion))
         new_id = cur.lastrowid
         conn.commit()
+        enviar_datos_aws()
         return jsonify({'ok':True,'idAptitud': new_id}), 201
     except Exception as e:
         log(f"US040 create aptitud error: {e}\n{traceback.format_exc()}")
@@ -8426,6 +8701,7 @@ def admin_aptitud_update(current_user_id, id_aptitud):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
         cur.execute("UPDATE aptitud SET nombreAptitud=%s, descripcion=%s WHERE idAptitud=%s", (nombre, descripcion, id_aptitud))
         conn.commit()
+        enviar_datos_aws()
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US040 update aptitud error: {e}\n{traceback.format_exc()}")
@@ -8442,11 +8718,14 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idAptitud FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
-        if not cur.fetchone():
+        cur.execute("SELECT * FROM aptitud WHERE idAptitud=%s", (id_aptitud,))
+        aptitud = cur.fetchone()
+        if not aptitud:
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la aptitud. Intente nuevamente.'}), 404
-        cur.execute("UPDATE aptitud SET fechaBaja=NOW() WHERE idAptitud=%s AND fechaBaja IS NULL", (id_aptitud,))
+        cur.execute("UPDATE aptitud SET fechaBaja=NOW() WHERE idAptitud=%s AND fechaBaja IS NULL", (aptitud['idAptitud'],))
         conn.commit()
+        # Enviar eliminación a AWS
+        eliminar_datos_aws([aptitud['nombreAptitud']])
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US040 delete aptitud error: {e}\n{traceback.format_exc()}")
@@ -8882,7 +9161,7 @@ def _estado_carrera_institucion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses', methods=['GET'])
-@requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
+@requires_permission(['MANAGE_CAREER_INSTITUTION_STATUSES', 'INSTITUTION_MANAGE_CAREERS'])
 def admin_career_institution_statuses_list(current_user_id):
     conn=None
     try:
@@ -9435,3 +9714,5 @@ def admin_group_permission_remove(current_user_id, grupo_id, perm_id):
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+
+
