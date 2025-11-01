@@ -109,7 +109,8 @@
 					},
 					"response": []
 				}
-			]
+			],
+			"description": "Login de usuario con correo y contraseña\n\nLogin con Google\n\nObtener información del usuario autenticado"
 		},
 		{
 			"name": "HU3",
@@ -290,6 +291,38 @@
 					"response": []
 				},
 				{
+					"name": "Listar todos los permisos disponibles Copy(HU4)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/admin/permissions",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"permissions"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "usuarios",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "Admin: agregar permiso directo a un usuario",
 					"request": {
 						"method": "POST",
@@ -357,7 +390,8 @@
 					},
 					"response": []
 				}
-			]
+			],
+			"description": "Administrador:\n\nManejar todos los permisos de usuario tanto directos como del grupo al que pertenece"
 		},
 		{
 			"name": "HU4",
@@ -579,7 +613,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/access-history/export?format=pdf&userId={{userId}}&from=2025-08-01&to=2025-08-31&ip=123456789&estado=Exitoso",
+							"raw": "{{baseURL}}/api/v1/admin/access-history/export?format=pdf&userId={{userId}}",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -601,19 +635,23 @@
 								},
 								{
 									"key": "from",
-									"value": "2025-08-01"
+									"value": "2025-08-01",
+									"disabled": true
 								},
 								{
 									"key": "to",
-									"value": "2025-08-31"
+									"value": "2025-08-31",
+									"disabled": true
 								},
 								{
 									"key": "ip",
-									"value": "123456789"
+									"value": "123456789",
+									"disabled": true
 								},
 								{
 									"key": "estado",
-									"value": "Exitoso"
+									"value": "Exitoso",
+									"disabled": true
 								}
 							]
 						}
@@ -770,7 +808,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "// {\r\n//     \"nombre\": \"Ana\",\r\n//     \"correo\": \"ana@example.com\",\r\n//     \"contrasena\": \"Aaa@1234\",\r\n//     \"aceptaPoliticas\": true\r\n// }\r\n// DATOS FALTANTES:\r\n{\r\n    \"nombre\": \"Ana\",\r\n    \"correo\": \"ana@example.com\"\r\n}",
+							"raw": "{\r\n    \"nombre\": \"Ana\",\r\n    \"correo\": \"ana@example.com\",\r\n    \"contrasena\": \"Aaa@1234\",\r\n    \"dni\": \"12345678\",\r\n    \"apellido\": \"Gonzalez\",\r\n    \"fechaNac\": \"1990-01-01\",\r\n    \"idGenero\": 1,\r\n    \"idLocalidad\": 1\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -826,6 +864,32 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Ejemplo de validacion",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/auth/verify-email?key=tu_clave_aqui",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"verify-email"
+							],
+							"query": [
+								{
+									"key": "key",
+									"value": "tu_clave_aqui"
+								}
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
@@ -874,7 +938,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"correo\": \"usuario@example.com\"\r\n}",
+							"raw": "{\r\n    \"correo\": \"m1718c2@gmail.com\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -1005,7 +1069,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"idCarreraInstitucion\": 123}",
+							"raw": "{\"idCarreraInstitucion\": 1}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -1038,7 +1102,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/user/interests/123",
+							"raw": "{{baseURL}}/api/v1/user/interests/1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1047,7 +1111,7 @@
 								"v1",
 								"user",
 								"interests",
-								"123"
+								"1"
 							]
 						}
 					},
@@ -1094,7 +1158,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/user/tests/42/access",
+							"raw": "{{baseURL}}/api/v1/user/tests/2/access",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1103,7 +1167,7 @@
 								"v1",
 								"user",
 								"tests",
-								"42",
+								"2",
 								"access"
 							]
 						}
@@ -1276,7 +1340,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/careers?search=ingenieria",
+							"raw": "{{baseURL}}/api/v1/careers?search= ing",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1288,7 +1352,7 @@
 							"query": [
 								{
 									"key": "search",
-									"value": "ingenieria"
+									"value": " ing"
 								}
 							]
 						}
@@ -1332,7 +1396,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/careers/1/institutions/10",
+							"raw": "{{baseURL}}/api/v1/careers/1/institutions/1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1342,7 +1406,7 @@
 								"careers",
 								"1",
 								"institutions",
-								"10"
+								"1"
 							]
 						}
 					},
@@ -1359,7 +1423,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/careers/10",
+							"raw": "{{baseURL}}/api/v1/careers/1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1367,7 +1431,7 @@
 								"api",
 								"v1",
 								"careers",
-								"10"
+								"1"
 							]
 						}
 					},
@@ -1384,7 +1448,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/careers/10/interest",
+							"raw": "{{baseURL}}/api/v1/careers/1/interest",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1392,8 +1456,60 @@
 								"api",
 								"v1",
 								"careers",
-								"10",
+								"1",
 								"interest"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar \"Me interesa\"",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer Hola"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/careers/1/interest",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"careers",
+								"1",
+								"interest"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LISTAR CARRERAINSTITUCION",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/careers/1/institutions",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"careers",
+								"1",
+								"institutions"
 							]
 						}
 					},
@@ -1469,6 +1585,33 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Aprobar Institucion",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/institutions/registration/approve/28",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"institutions",
+								"registration",
+								"approve",
+								"28"
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
@@ -1530,41 +1673,6 @@
 			"name": "HU17",
 			"item": [
 				{
-					"name": "Obtener opciones del formulario (tipos y ubicaciones)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/institutions/registration/options",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"institutions",
-								"registration",
-								"options"
-							],
-							"query": [
-								{
-									"key": "countryId",
-									"value": "1",
-									"description": "Filtros",
-									"disabled": true
-								},
-								{
-									"key": "provinceId",
-									"value": "10",
-									"description": "Filtros",
-									"disabled": true
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
 					"name": "Enviar solicitud de registro de institución",
 					"request": {
 						"method": "POST",
@@ -1603,6 +1711,32 @@
 		{
 			"name": "HU18",
 			"item": [
+				{
+					"name": "Listar",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/institutions/me/careers",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"institutions",
+								"me",
+								"careers"
+							]
+						}
+					},
+					"response": []
+				},
 				{
 					"name": "Agregar Carrera",
 					"request": {
@@ -1725,7 +1859,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/institutions/me/careers/123/faqs",
+							"raw": "{{baseURL}}/api/v1/institutions/me/careers/2/faqs",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1735,7 +1869,7 @@
 								"institutions",
 								"me",
 								"careers",
-								"123",
+								"2",
 								"faqs"
 							]
 						}
@@ -1836,7 +1970,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/institutions/me/careers/123/faqs/10",
+							"raw": "{{baseURL}}/api/v1/institutions/me/careers/1/faqs/2",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -1846,9 +1980,9 @@
 								"institutions",
 								"me",
 								"careers",
-								"123",
+								"1",
 								"faqs",
-								"10"
+								"2"
 							]
 						}
 					},
@@ -2079,7 +2213,7 @@
 			"name": "HU22",
 			"item": [
 				{
-					"name": "Iniciar test",
+					"name": "Comenzar TEST",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -2113,7 +2247,7 @@
 					"response": []
 				},
 				{
-					"name": "Aceptar políticas e iniciar",
+					"name": "Mensajes TEST",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -2124,7 +2258,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"acceptPolicies\":true}",
+							"raw": "{\n  \"answer\": \"TODO BEN\",\n  \"userIdAnonimo\": \"7e646765-d43c-4c48-bc31-33e94088dff7\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -2132,7 +2266,7 @@
 							}
 						},
 						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/start",
+							"raw": "{{baseURL}}/api/v1/tests/7/answer",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -2140,79 +2274,7 @@
 								"api",
 								"v1",
 								"tests",
-								"start"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Iniciar autenticado",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/start",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"start"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Responder pregunta",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\"answer\":\"Mi respuesta\"}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/answer",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
+								"7",
 								"answer"
 							]
 						}
@@ -2220,47 +2282,29 @@
 					"response": []
 				},
 				{
-					"name": "Forzar error de guardado",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\"answer\":\"Falla\",\"triggerSaveError\":true}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/answer",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"answer"
-							]
-						}
+					"name": "Ver resultado",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
 					},
-					"response": []
-				},
-				{
-					"name": "Ver progreso",
 					"request": {
 						"method": "GET",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userIdAnonimo\": \"14ac81d2-6f2b-446f-95e7-19d0b5da318f\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
 						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/progress",
+							"raw": "{{baseURL}}/api/v1/tests/16/results",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -2268,113 +2312,8 @@
 								"api",
 								"v1",
 								"tests",
-								"1",
-								"progress"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Pausar",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/pause",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"pause"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Reanudar",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/resume",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"resume"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Guardar y salir",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/save-exit",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"save-exit"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Abandonar",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/abandon",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"abandon"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Finalizar",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/tests/1/finish",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"tests",
-								"1",
-								"finish"
+								"16",
+								"results"
 							]
 						}
 					},
@@ -3368,10 +3307,23 @@
 							{
 								"key": "Authorization",
 								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
 							}
 						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"userId\": 5\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/institutions/requests/1/approve",
+							"raw": "{{baseURL}}/api/v1/admin/institutions/requests/2/approve",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3381,7 +3333,7 @@
 								"admin",
 								"institutions",
 								"requests",
-								"1",
+								"2",
 								"approve"
 							]
 						}
@@ -3428,6 +3380,33 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Dar de baja",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/admin/institutions/30/deactivate",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"institutions",
+								"30",
+								"deactivate"
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
@@ -3445,7 +3424,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/careers",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/careers?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3548,7 +3527,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"nombreCarrera\":\"Ing. X Modificada\",\"idTipoCarrera\":1}",
+							"raw": "{\"nombreCarrera\":\"Ingeniería en Sistemas Actualizada\",\"idTipoCarrera\":1}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -3615,7 +3594,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-types",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-types?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -3795,12 +3774,6 @@
 								"admin",
 								"catalog",
 								"countries"
-							],
-							"query": [
-								{
-									"key": "includeInactive",
-									"value": "1"
-								}
 							]
 						}
 					},
@@ -3965,12 +3938,6 @@
 								"admin",
 								"catalog",
 								"provinces"
-							],
-							"query": [
-								{
-									"key": "includeInactive",
-									"value": "1"
-								}
 							]
 						}
 					},
@@ -4125,7 +4092,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/localities",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/localities?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4309,7 +4276,8 @@
 							"query": [
 								{
 									"key": "includeInactive",
-									"value": "1"
+									"value": "1",
+									"disabled": true
 								}
 							]
 						}
@@ -4332,7 +4300,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"nombreGenero\":\"No Binario\"}",
+							"raw": "{\"nombreGenero\":\"Femenino\"}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -4479,7 +4447,8 @@
 							"query": [
 								{
 									"key": "includeInactive",
-									"value": "1"
+									"value": "1",
+									"disabled": true
 								}
 							]
 						}
@@ -4649,7 +4618,8 @@
 							"query": [
 								{
 									"key": "includeInactive",
-									"value": "1"
+									"value": "1",
+									"disabled": true
 								}
 							]
 						}
@@ -4805,7 +4775,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/groups",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/groups?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -4975,7 +4945,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-types",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-types?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5145,7 +5115,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-modalities",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-modalities?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5315,7 +5285,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/aptitudes",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/aptitudes?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5485,7 +5455,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/access-statuses",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/access-statuses?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5686,7 +5656,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"nombreTipoAccion\":\"MODIFICACION\"}",
+							"raw": "{\"nombreTipoAccion\":\"ELIMINACION\"}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -5819,7 +5789,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-states",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/institution-states?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -5989,7 +5959,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses",
+							"raw": "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses?includeInactive=1",
 							"host": [
 								"{{baseURL}}"
 							],
@@ -6328,7 +6298,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"estadoInicial\":\"activo\"}",
+							"raw": "{\r\n    \"correo\": \"juan.perez@example.com\",\r\n    \"dni\": \"12345678\",\r\n    \"nombre\": \"Juan\",\r\n    \"apellido\": \"Perez\",\r\n    \"fechaNac\": \"1990-01-15\",\r\n    \"idGenero\": 1,\r\n    \"idLocalidad\": 1,\r\n    \"estadoInicial\": \"activo\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -6346,101 +6316,6 @@
 								"admin",
 								"catalog",
 								"users"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Crear usuario bloqueado inicialmente",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\"nombre\":\"Ana\",\"apellido\":\"Lopez\",\"email\":\"ana.lopez@example.com\",\"estadoInicial\":\"inactivo\"}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/users",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"admin",
-								"catalog",
-								"users"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Bloquear",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/users/1/block",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"admin",
-								"catalog",
-								"users",
-								"1",
-								"block"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Desbloquear",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{token}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseURL}}/api/v1/admin/catalog/users/1/unblock",
-							"host": [
-								"{{baseURL}}"
-							],
-							"path": [
-								"api",
-								"v1",
-								"admin",
-								"catalog",
-								"users",
-								"1",
-								"unblock"
 							]
 						}
 					},
@@ -6472,6 +6347,109 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "modificar usuario",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"nombre\": \"Juan\",\r\n    \"apellido\": \"Perez\",\r\n    \"email\": \"juan.perez@example.com\",\r\n    \"grupos\": [\r\n        1,\r\n        2\r\n    ],\r\n    \"idEstado\": 1\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseURL}}/api/v1/admin/catalog/users/12",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"catalog",
+								"users",
+								"12"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "HU47",
+			"item": [
+				{
+					"name": "Asignar permiso a grupo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/admin/catalog/groups/1/permissions/2",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"catalog",
+								"groups",
+								"1",
+								"permissions",
+								"2"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Remover permiso de grupo",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseURL}}/api/v1/admin/catalog/groups/1/permissions/2",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"catalog",
+								"groups",
+								"1",
+								"permissions",
+								"2"
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		}
@@ -6479,18 +6457,15 @@
 	"variable": [
 		{
 			"key": "baseURL",
-			"value": "http://localhost:5000",
-			"type": "default"
+			"value": "http://ovotest.mooo.com:5000/"
 		},
 		{
 			"key": "userId",
-			"value": "1",
-			"type": "default"
+			"value": "1"
 		},
 		{
 			"key": "token",
-			"value": "Hola",
-			"type": "default"
+			"value": "Hola"
 		}
 	]
 }
