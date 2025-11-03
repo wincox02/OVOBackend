@@ -153,6 +153,42 @@ def send_email(to, subject, body):
     server.sendmail(correo, to, msg.as_string())
     server.quit()
 
+#-----------------------------------DATE VALIDATION-----------------------------------
+def validate_date_string(date_str: str) -> tuple:
+    """
+    Valida que una fecha sea válida (sin fechas imposibles como 30/02, 31/11, etc.).
+    Acepta formatos: 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM:SS'
+    
+    Returns:
+        tuple: (is_valid: bool, normalized_date: str or None, error_message: str or None)
+    """
+    if not date_str or not isinstance(date_str, str):
+        return (False, None, "Fecha inválida.")
+    
+    date_str = date_str.strip()
+    
+    # Casos especiales
+    if date_str.upper() == 'NOW()':
+        return (True, 'NOW()', None)
+    if date_str.upper() == 'NULL':
+        return (True, None, None)
+    
+    # Intentar parsear con hora
+    try:
+        parsed = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        return (True, date_str, None)
+    except ValueError:
+        pass
+    
+    # Intentar parsear solo fecha
+    try:
+        parsed = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+        # Agregar hora por defecto
+        normalized = date_str + ' 23:59:59'
+        return (True, normalized, None)
+    except ValueError:
+        return (False, None, "Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DD HH:MM:SS")
+
 # ============================ AUTENTICACIÓN (US001) ============================
 EMAIL_REGEX = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
 
@@ -457,6 +493,311 @@ def whoami(current_user_id):
 
 # curl para obtener información del usuario autenticado
 # curl -X GET "{{baseURL}}/api/v1/auth/me" -H "Authorization: Bearer {{token}}"
+
+# ============================ ADMIN: Backup de la base de datos (US002) ============================
+
+# -- Volcando estructura para tabla ovo.configuracionbackup
+# CREATE TABLE IF NOT EXISTS `configuracionbackup` (
+#   `frecuencia` enum('Diaria','Semanal','Mensual','Anual') DEFAULT NULL,
+#   `horaEjecucion` time DEFAULT NULL,
+#   `cantidadBackupConservar` int(11) DEFAULT NULL
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+# Endpoint para configurar la frecuencia automatica de backups
+@app.route('/api/v1/admin/backup', methods=['POST'])
+def configurar_frecuencia_backup():
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        data = request.get_json(silent=True) or {}
+
+        frecuencia = data.get('frecuencia')
+        if frecuencia not in ['Diaria', 'Semanal', 'Mensual', 'Anual']:
+            return jsonify({"errorCode": "ERR1", "message": "Frecuencia no válida"}), 400
+        hora_ejecucion = data.get('horaEjecucion')
+        cantidad_backup_conservar = data.get('cantidadBackupConservar')
+
+        # Validar los datos recibidos
+        if not frecuencia or not hora_ejecucion or cantidad_backup_conservar is None:
+            return jsonify({"errorCode": "ERR1", "message": "Faltan datos"}), 400
+
+        # Lógica para configurar la frecuencia de backups
+        cur.execute("DELETE FROM configuracionbackup")
+        cur.execute("INSERT INTO configuracionbackup (frecuencia, horaEjecucion, cantidadBackupConservar) VALUES (%s, %s, %s)",
+                   (frecuencia, hora_ejecucion, cantidad_backup_conservar))
+        conn.commit()
+
+        # Extraer hora y minuto de horaEjecucion (formato HH:MM:SS o HH:MM)
+        try:
+            # Si es un objeto time, convertir a string
+            if hasattr(hora_ejecucion, 'hour'):
+                hora = hora_ejecucion.hour
+                minuto = hora_ejecucion.minute
+            else:
+                # Si es string, parsear
+                time_parts = str(hora_ejecucion).split(':')
+                hora = int(time_parts[0])
+                minuto = int(time_parts[1])
+        except Exception:
+            return jsonify({"errorCode": "ERR1", "message": "Formato de hora inválido"}), 400
+
+        print("minuto:", minuto)
+        print("hora:", hora)
+        # Ejecutar comandos cron según la frecuencia configurada y eliminar los antiguos cron jobs
+        if frecuencia == 'Diaria':
+            cron_timing = f"{minuto} {hora} * * *"
+        elif frecuencia == 'Semanal':
+            cron_timing = f"{minuto} {hora} * * 0"
+        elif frecuencia == 'Mensual':
+            cron_timing = f"{minuto} {hora} 1 * *"
+        elif frecuencia == 'Anual':
+            cron_timing = f"{minuto} {hora} 1 1 *"
+
+        # Aquí se eliminarían los antiguos cron jobs y se agregarían los nuevos
+        # No en funciones aparte
+        os.system("(crontab -l | grep -v 'backup_database.sh') | crontab -")
+        os.system(f"(crontab -l; echo '{cron_timing} /root/proyectofinal/backup_database.sh') | crontab -")
+
+        # Los backups se guardarían en /var/bdbackup/
+
+        return jsonify({"message": "Frecuencia de backup configurada con éxito"}), 200
+    except Exception as e:
+        log(f"/admin/backup error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al configurar la frecuencia de backup"}), 500
+
+# Endpoint para obtener la configuración actual de backups
+@app.route('/api/v1/admin/backup', methods=['GET'])
+def obtener_configuracion_backup():
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM configuracionbackup")
+        # Vienen varios registros, tomar el primero si existe
+        config = cur.fetchone()
+        if not config:
+            return jsonify({"errorCode": "ERR1", "message": "No se encontró configuración de backup"}), 404
+        
+        # Convertir horaEjecucion a string para que sea serializable en JSON
+        if config.get('horaEjecucion'):
+            # Si es un objeto time o timedelta, convertir a string
+            hora_obj = config['horaEjecucion']
+            if hasattr(hora_obj, 'total_seconds'):
+                # Es un timedelta, convertir a formato HH:MM:SS
+                total_seconds = int(hora_obj.total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                seconds = total_seconds % 60
+                config['horaEjecucion'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            else:
+                # Es un objeto time u otro tipo, convertir a string
+                config['horaEjecucion'] = str(hora_obj)
+        
+        return jsonify(config), 200
+    except Exception as e:
+        log(f"/admin/backup error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al obtener la configuración de backup"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+# Endpoint para obtener los backups disponibles (registrados en la tabla backup)
+@app.route('/api/v1/admin/backup/files', methods=['GET'])
+def obtener_backups_disponibles():
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT 
+                idBackup,
+                fechaBackup,
+                directorio,
+                tamano
+            FROM backup
+            ORDER BY fechaBackup DESC
+        """)
+        backups = cur.fetchall() or []
+        
+        # Formatear la respuesta
+        data = [
+            {
+                "id": backup.get('idBackup'),
+                "fecha": backup.get('fechaBackup').isoformat() if backup.get('fechaBackup') else None,
+                "directorio": backup.get('directorio'),
+                "tamano": backup.get('tamano'),  # Tamaño en bytes
+                "tamanoFormateado": f"{backup.get('tamano') / (1024 * 1024):.2f} MB" if backup.get('tamano') else "0 MB"
+            }
+            for backup in backups
+        ]
+        
+        return jsonify({"backups": data}), 200
+    except Exception as e:
+        log(f"/admin/backup/files error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al obtener los backups disponibles"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+# Endpoint para restaurar un backup específico
+@app.route('/api/v1/admin/backup/files', methods=['POST'])
+def restaurar_backup():
+    log("======= INICIO restaurar_backup =======")
+    data = request.get_json(silent=True) or {}
+    id_backup = data.get("idBackup")
+    log(f"ID backup recibido: {id_backup}")
+    
+    if not id_backup:
+        log("ERROR: Falta el ID del backup")
+        return jsonify({"errorCode": "ERR1", "message": "Falta el ID del backup"}), 400
+
+    conn = None
+    try:
+        log("Conectando a la base de datos...")
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        log("Conexión exitosa")
+        
+        # Verificar que el backup exista en la tabla y obtener el directorio
+        log(f"Buscando backup con ID {id_backup} en la tabla...")
+        cur.execute("SELECT idBackup, directorio FROM backup WHERE idBackup = %s", (id_backup,))
+        backup_row = cur.fetchone()
+        log(f"Resultado de búsqueda: {backup_row}")
+        
+        if not backup_row:
+            log("ERROR: Backup no encontrado en la base de datos")
+            return jsonify({"errorCode": "ERR2", "message": "Backup no encontrado en el registro"}), 404
+        
+        directorio = backup_row.get('directorio')
+        log(f"Directorio del backup: {directorio}")
+        
+        # Construir la ruta completa del archivo
+        backup_path = f"/var/bdbackup/{directorio}"
+        log(f"Ruta completa del backup: {backup_path}")
+        
+        # Verificar que el archivo físicamente exista
+        log("Verificando si el archivo existe físicamente...")
+        if not os.path.exists(backup_path):
+            log(f"ERROR: El archivo {backup_path} no existe")
+            return jsonify({"errorCode": "ERR3", "message": "El archivo de backup no existe físicamente"}), 404
+        log("Archivo existe correctamente")
+        
+        # Cerrar la conexión a la base de datos antes de restaurar
+        log("Cerrando conexión a la base de datos...")
+        if conn:
+            conn.close()
+            conn = None
+        log("Conexión cerrada")
+        
+        # Restaurar el backup directamente con mysql (sin el script interactivo)
+        import subprocess
+        
+        # Ejecutar mysql para restaurar el backup
+        restore_command = [
+            "mysql",
+            f"-h{DB_CONFIG['host']}",
+            f"-P{DB_CONFIG['port']}",
+            f"-u{DB_CONFIG['user']}",
+            f"-p{DB_CONFIG['password']}",
+            DB_CONFIG['database']
+        ]
+        log(f"Comando de restauración: {' '.join([c if 'password' not in c else '-p****' for c in restore_command])}")
+        
+        try:
+            log("Abriendo archivo de backup...")
+            with open(backup_path, 'r') as backup_file:
+                log("Ejecutando comando mysql...")
+                result = subprocess.run(
+                    restore_command,
+                    stdin=backup_file,
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # Timeout de 5 minutos
+                )
+                log(f"Comando mysql finalizado. Return code: {result.returncode}")
+            
+            if result.returncode != 0:
+                log(f"ERROR en restauración: stdout={result.stdout}, stderr={result.stderr}")
+                return jsonify({"errorCode": "ERR4", "message": f"Error al ejecutar la restauración: {result.stderr}"}), 500
+            
+            log("Restauración completada exitosamente")
+            log("======= FIN restaurar_backup EXITOSO =======")
+            return jsonify({"message": f"Backup {directorio} restaurado con éxito"}), 200
+        except subprocess.TimeoutExpired:
+            log("ERROR: Timeout al restaurar backup (excedió 5 minutos)")
+            return jsonify({"errorCode": "ERR5", "message": "La restauración excedió el tiempo límite"}), 500
+    except Exception as e:
+        log(f"ERROR GENERAL en restaurar_backup: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al restaurar el backup"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+# Endpoint para realizar un backup manualmente (ejecutar el script de backup_database.sh)
+@app.route('/api/v1/admin/backup/manual', methods=['POST'])
+def backup_manual():
+    # conn = None
+    try:
+        import subprocess
+        import glob
+        
+        # Obtener el timestamp de antes de ejecutar para identificar el archivo generado
+        backup_dir = "/var/bdbackup"
+        archivos_antes = set(os.listdir(backup_dir)) if os.path.exists(backup_dir) else set()
+        
+        # Ejecutar el script de backup
+        result = subprocess.run(
+            ["bash", "/root/proyectofinal/backup_database.sh"],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            log(f"backup_manual error: {result.stderr}")
+            return jsonify({"errorCode": "ERR1", "message": "Error al ejecutar el script de backup"}), 500
+        
+        # Identificar el nuevo archivo generado
+        archivos_despues = set(os.listdir(backup_dir)) if os.path.exists(backup_dir) else set()
+        nuevos_archivos = archivos_despues - archivos_antes
+        
+        if not nuevos_archivos:
+            return jsonify({"errorCode": "ERR2", "message": "No se generó ningún archivo de backup"}), 500
+        
+        # Tomar el archivo más reciente (debería ser solo uno)
+        nuevo_archivo = list(nuevos_archivos)[0]
+        ruta_completa = os.path.join(backup_dir, nuevo_archivo)
+        
+        # Obtener tamaño del archivo en bytes
+        tamano_bytes = os.path.getsize(ruta_completa)
+        
+        # Registrar el backup en la tabla (se hace en el script)
+        # conn = mysql.connector.connect(**DB_CONFIG)
+        # cur = conn.cursor()
+        # cur.execute(
+        #     "INSERT INTO backup (fechaBackup, directorio, tamano) VALUES (NOW(), %s, %s)",
+        #     (nuevo_archivo, tamano_bytes)
+        # )
+        # conn.commit()
+        
+        return jsonify({
+            "message": "Backup manual ejecutado con éxito",
+            "archivo": nuevo_archivo,
+            "tamano": f"{tamano_bytes / (1024 * 1024):.2f} MB"
+        }), 200
+    except Exception as e:
+        log(f"backup_manual error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR4", "message": "Error al realizar el backup manual"}), 500
 
 # ============================ ADMIN: Gestión de perfiles (US003) ============================
 
@@ -1313,16 +1654,52 @@ def admin_access_history_export(current_user_id):
                 from reportlab.lib.pagesizes import A4
                 from reportlab.lib import colors
                 from reportlab.lib.styles import getSampleStyleSheet
-                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+                from reportlab.lib.units import cm
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+                from reportlab.pdfgen import canvas
+                import os
+
+                # Clase personalizada para agregar encabezado y pie de página en todas las páginas
+                class PDFWithHeaderFooter(SimpleDocTemplate):
+                    def __init__(self, *args, logo_path=None, **kwargs):
+                        super().__init__(*args, **kwargs)
+                        self.logo_path = logo_path
+                    
+                    def handle_pageBegin(self):
+                        super().handle_pageBegin()
+                        self._add_header_footer()
+                    
+                    def _add_header_footer(self):
+                        c = self.canv
+                        page_width, page_height = A4
+                        
+                        # Encabezado: Logo a la izquierda y texto a la derecha
+                        if self.logo_path and os.path.exists(self.logo_path):
+                            c.drawImage(self.logo_path, 36, page_height - 70, width=80, height=40, preserveAspectRatio=True)
+                        
+                        c.setFont('Helvetica-Bold', 12)
+                        c.drawRightString(page_width - 36, page_height - 50, "ORIENTACIÓN VOCACIONAL ONLINE")
+                        
+                        # Línea separadora debajo del encabezado
+                        c.setStrokeColor(colors.grey)
+                        c.setLineWidth(0.5)
+                        c.line(36, page_height - 75, page_width - 36, page_height - 75)
+                        
+                        # Pie de página: Número de página a la derecha
+                        c.setFont('Helvetica', 9)
+                        page_num = c.getPageNumber()
+                        c.drawRightString(page_width - 36, 20, f"Página {page_num}")
 
                 buffer = BytesIO()
-                doc = SimpleDocTemplate(
+                logo_path = os.path.join(os.path.dirname(__file__), 'OVO_logo.png')
+                doc = PDFWithHeaderFooter(
                     buffer,
                     pagesize=A4,
                     leftMargin=36,
                     rightMargin=36,
-                    topMargin=36,
-                    bottomMargin=36,
+                    topMargin=90,  # Aumentado para el encabezado
+                    bottomMargin=50,  # Aumentado para el pie de página
+                    logo_path=logo_path
                 )
 
                 styles = getSampleStyleSheet()
@@ -1344,6 +1721,8 @@ def admin_access_history_export(current_user_id):
                     titulo_texto = "Export historial de accesos"
                 # Establecer el título interno del PDF
                 doc.title = titulo_texto
+                
+                elements = []
                 title = Paragraph(titulo_texto, styles["Heading2"])
 
                 headers = ["Fecha", "UsuarioId", "Nombre", "Apellido", "IP", "Navegador", "Estado"]
@@ -1381,7 +1760,9 @@ def admin_access_history_export(current_user_id):
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ]))
 
-                elements = [title, Spacer(1, 8), table]
+                elements.extend([title, Spacer(1, 8), table])
+                
+                # Construir el PDF con la clase personalizada que agrega encabezado y pie
                 doc.build(elements)
 
                 pdf = buffer.getvalue()
@@ -1799,16 +2180,52 @@ def admin_audit_export(current_user_id):
                 from reportlab.lib.pagesizes import A4
                 from reportlab.lib import colors
                 from reportlab.lib.styles import getSampleStyleSheet
-                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+                from reportlab.lib.units import cm
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+                from reportlab.pdfgen import canvas
+                import os
+
+                # Clase personalizada para agregar encabezado y pie de página en todas las páginas
+                class PDFWithHeaderFooter(SimpleDocTemplate):
+                    def __init__(self, *args, logo_path=None, **kwargs):
+                        super().__init__(*args, **kwargs)
+                        self.logo_path = logo_path
+                    
+                    def handle_pageBegin(self):
+                        super().handle_pageBegin()
+                        self._add_header_footer()
+                    
+                    def _add_header_footer(self):
+                        c = self.canv
+                        page_width, page_height = A4
+                        
+                        # Encabezado: Logo a la izquierda y texto a la derecha
+                        if self.logo_path and os.path.exists(self.logo_path):
+                            c.drawImage(self.logo_path, 36, page_height - 70, width=80, height=40, preserveAspectRatio=True)
+                        
+                        c.setFont('Helvetica-Bold', 12)
+                        c.drawRightString(page_width - 36, page_height - 50, "ORIENTACIÓN VOCACIONAL ONLINE")
+                        
+                        # Línea separadora debajo del encabezado
+                        c.setStrokeColor(colors.grey)
+                        c.setLineWidth(0.5)
+                        c.line(36, page_height - 75, page_width - 36, page_height - 75)
+                        
+                        # Pie de página: Número de página a la derecha
+                        c.setFont('Helvetica', 9)
+                        page_num = c.getPageNumber()
+                        c.drawRightString(page_width - 36, 20, f"Página {page_num}")
 
                 buffer = BytesIO()
-                doc = SimpleDocTemplate(
+                logo_path = os.path.join(os.path.dirname(__file__), 'OVO_logo.png')
+                doc = PDFWithHeaderFooter(
                     buffer,
                     pagesize=A4,
                     leftMargin=36,
                     rightMargin=36,
-                    topMargin=36,
-                    bottomMargin=36,
+                    topMargin=90,  # Aumentado para el encabezado
+                    bottomMargin=50,  # Aumentado para el pie de página
+                    logo_path=logo_path
                 )
 
                 styles = getSampleStyleSheet()
@@ -1829,6 +2246,8 @@ def admin_audit_export(current_user_id):
                 if not user_name or user_name.lower() in ("anonimo", "anonymous"):
                     titulo_texto = "Export auditoría"
                 doc.title = titulo_texto
+                
+                elements = []
                 title = Paragraph(titulo_texto, styles["Heading2"])
 
                 headers = ["Fecha", "UsuarioId", "Nombre", "Apellido", "TipoAccion", "Modulo", "ClaseId"]
@@ -1866,7 +2285,9 @@ def admin_audit_export(current_user_id):
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ]))
 
-                elements = [title, Spacer(1, 8), table]
+                elements.extend([title, Spacer(1, 8), table])
+                
+                # Construir el PDF con la clase personalizada que agrega encabezado y pie
                 doc.build(elements)
 
                 pdf = buffer.getvalue()
@@ -2616,13 +3037,79 @@ def user_list_tests(current_user_id):
                 }
                 for carrera in carreras_rows
             ]
-            
+
+            # -- Volcando estructura para tabla ovo.aptitud
+            # CREATE TABLE IF NOT EXISTS `aptitud` (
+            # `idAptitud` int(11) NOT NULL AUTO_INCREMENT,
+            # `nombreAptitud` varchar(50) DEFAULT NULL,
+            # `descripcion` varchar(50) DEFAULT NULL,
+            # `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+            # `fechaBaja` datetime DEFAULT NULL,
+            # PRIMARY KEY (`idAptitud`)
+            # ) ENGINE=InnoDB AUTO_INCREMENT=88 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+            # -- Volcando estructura para tabla ovo.test
+            # CREATE TABLE IF NOT EXISTS `test` (
+            # `idTest` int(11) NOT NULL AUTO_INCREMENT,
+            # `idEstadoTest` int(11) NOT NULL,
+            # `idUsuario` int(11) DEFAULT NULL,
+            # `fechaTest` datetime NOT NULL DEFAULT current_timestamp(),
+            # `idChatIA` varchar(50) NOT NULL,
+            # `HistorialPreguntas` longtext DEFAULT NULL,
+            # PRIMARY KEY (`idTest`),
+            # KEY `FK_test_usuario` (`idUsuario`),
+            # KEY `FK_test_estadotest` (`idEstadoTest`),
+            # CONSTRAINT `FK_test_estadotest` FOREIGN KEY (`idEstadoTest`) REFERENCES `estadotest` (`idEstadoTest`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+            # CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+            # ) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+            # -- Volcando estructura para tabla ovo.testaptitud
+            # CREATE TABLE IF NOT EXISTS `testaptitud` (
+            # `idResultadoAptitud` int(11) NOT NULL AUTO_INCREMENT,
+            # `afinidadAptitud` double DEFAULT NULL,
+            # `idAptitud` int(11) DEFAULT NULL,
+            # `idTest` int(11) DEFAULT NULL,
+            # PRIMARY KEY (`idResultadoAptitud`),
+            # KEY `FK_testaptitud_aptitud` (`idAptitud`),
+            # KEY `FK_testaptitud_test` (`idTest`),
+            # CONSTRAINT `FK_testaptitud_aptitud` FOREIGN KEY (`idAptitud`) REFERENCES `aptitud` (`idAptitud`) ON DELETE CASCADE ON UPDATE CASCADE,
+            # CONSTRAINT `FK_testaptitud_test` FOREIGN KEY (`idTest`) REFERENCES `test` (`idTest`) ON DELETE CASCADE ON UPDATE CASCADE
+            # ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+            # Aptitudes obtenidas en el test (join con tabla aptitud para obtener el nombre)
+            cur.execute(
+                """
+                SELECT
+                    a.idAptitud,
+                    a.nombreAptitud,
+                    ta.afinidadAptitud
+                FROM testaptitud ta
+                JOIN aptitud a ON a.idAptitud = ta.idAptitud
+                WHERE ta.idTest = %s
+                ORDER BY ta.afinidadAptitud DESC
+                """,
+                (id_test,)
+            )
+            aptitudes_rows = cur.fetchall() or []
+
+            # Formatear las aptitudes obtenidas
+            aptitudes_obtenidas = [
+                {
+                    "idAptitud": aptitud.get('idAptitud'),
+                    "nombreAptitud": aptitud.get('nombreAptitud'),
+                    "afinidadAptitud": round(float(aptitud.get('afinidadAptitud') or 0), 2)
+                }
+                for aptitud in aptitudes_rows
+            ]
+
             # Agregar el test con sus carreras
             data.append({
                 "id": id_test,
                 "fecha": (test_row.get('fechaTest').isoformat(sep=' ') if test_row.get('fechaTest') else None),
                 "estado": test_row.get('nombreEstadoTest'),
-                "carrerasRecomendadas": carreras_recomendadas
+                "carrerasRecomendadas": carreras_recomendadas,
+                "aptitudesObtenidas": aptitudes_obtenidas
             })
         
         return jsonify(data), 200
@@ -4485,9 +4972,19 @@ def my_institution_careers_edit(current_user_id: int, id_ci: int):
         try:
             import datetime as _dt
             if isinstance(fecha_inicio, str) and fecha_inicio != '':
-                fi_dt = _dt.datetime.fromisoformat(fecha_inicio)
+                # Validar fecha_inicio
+                is_valid, normalized_date, error_msg = validate_date_string(fecha_inicio)
+                if not is_valid:
+                    return jsonify({"errorCode": "ERR1", "message": error_msg}), 400
+                if normalized_date and normalized_date != 'NOW()':
+                    fi_dt = _dt.datetime.fromisoformat(normalized_date)
             if isinstance(fecha_fin, str) and fecha_fin != '':
-                ff_dt = _dt.datetime.fromisoformat(fecha_fin)
+                # Validar fecha_fin
+                is_valid, normalized_date, error_msg = validate_date_string(fecha_fin)
+                if not is_valid:
+                    return jsonify({"errorCode": "ERR1", "message": error_msg}), 400
+                if normalized_date and normalized_date != 'NOW()':
+                    ff_dt = _dt.datetime.fromisoformat(normalized_date)
         except Exception:
             return jsonify({"errorCode": "ERR1", "message": "Debe completar todos los campos obligatorios para guardar los cambios."}), 400
 
@@ -6468,7 +6965,7 @@ _INSTITUTION_REQUESTS_MEM = {
 }
 
 @app.route('/api/v1/admin/institutions/requests', methods=['GET'])
-@requires_permission('MANAGE_INSTITUTION_REQUESTS')
+@requires_permission(['MANAGE_INSTITUTION_REQUESTS', 'ADMIN_APPROVE_INSTITUTION'])
 def admin_institution_requests_list(current_user_id):
     conn=None
     try:
@@ -6906,8 +7403,11 @@ def admin_catalog_careers_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera WHERE (fechaFin IS NULL OR fechaFin > NOW()) ORDER BY nombreCarrera")
+        cur.execute("SELECT idCarrera, nombreCarrera, idTipoCarrera, fechaFin FROM carrera ORDER BY nombreCarrera")
         rows = cur.fetchall() or []
+        for row in rows:
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'careers': rows}), 200
     except Exception as e:
         log(f"US029 list careers error: {e}\n{traceback.format_exc()}")
@@ -6973,26 +7473,19 @@ def admin_catalog_career_update(current_user_id, id_carrera):
     if not nombre or not tipo:
         return jsonify({'errorCode':'ERR1','message':'Debe completar todos los campos obligatorios.'}), 400
     
-    # Validar fechaFin si se proporciona
+    # Validar fechaFin si se proporciona usando la función helper
     fecha_fin_sql = None
     set_null = False
     if fechaFin:
-        if fechaFin.upper() == 'NOW()':
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        if normalized_date == 'NOW()':
             fecha_fin_sql = 'NOW()'
-        elif fechaFin.upper() == 'NULL':
-            set_null = True  # Flag para setear NULL explícitamente
+        elif normalized_date is None:
+            set_null = True
         else:
-            try:
-                # Validar formato de fecha
-                datetime.datetime.strptime(fechaFin, '%Y-%m-%d %H:%M:%S')
-                fecha_fin_sql = fechaFin
-            except ValueError:
-                try:
-                    # Intentar formato solo fecha
-                    datetime.datetime.strptime(fechaFin, '%Y-%m-%d')
-                    fecha_fin_sql = fechaFin + ' 23:59:59'  # Agregar hora por defecto
-                except ValueError:
-                    return jsonify({'errorCode':'ERR1','message':'Formato de fecha inválido. Use YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, NOW() o NULL'}), 400
+            fecha_fin_sql = normalized_date
     
     conn=None
     try:
@@ -7083,8 +7576,12 @@ def admin_career_types_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera WHERE (fechaFin IS NULL OR fechaFin > NOW()) ORDER BY nombreTipoCarrera")
+        cur.execute("SELECT idTipoCarrera, nombreTipoCarrera, fechaFin FROM tipocarrera ORDER BY nombreTipoCarrera")
         rows = cur.fetchall() or []
+        for row in rows:
+            # Formatear la fecha
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'careerTypes': rows}), 200
     except Exception as e:
         log(f"US030 list tipoCarrera error: {e}\n{traceback.format_exc()}")
@@ -7144,8 +7641,18 @@ def admin_career_type_detail(current_user_id, id_tipo):
 def admin_career_type_update(current_user_id, id_tipo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoCarrera') or '').strip()
+    fechaFin = data.get('fechaFin')  # Puede ser None, 'NOW()' o fecha específica YYYY-MM-DD HH:MM:SS
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -7155,7 +7662,7 @@ def admin_career_type_update(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Tipo de carrera no encontrado.'}), 404
         if _tipo_carrera_exists_active(cur, nombre, exclude_id=id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
-        cur.execute("UPDATE tipocarrera SET nombreTipoCarrera=%s WHERE idTipoCarrera=%s", (nombre, id_tipo))
+        cur.execute("UPDATE tipocarrera SET nombreTipoCarrera=%s, fechaFin=%s WHERE idTipoCarrera=%s", (nombre, fecha_fin_validated, id_tipo))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -7165,6 +7672,8 @@ def admin_career_type_update(current_user_id, id_tipo):
         try:
             if conn: conn.close()
         except Exception: pass
+# curl ejemplo con fechafin null:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/career-types/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreTipoCarrera\":\"Tipo Actualizado\",\"fechaFin\": null}"
 
 @app.route('/api/v1/admin/catalog/career-types/<int:id_tipo>', methods=['DELETE'])
 @requires_permission('MANAGE_CAREERS_TYPES')
@@ -7764,15 +8273,6 @@ def admin_gender_delete(current_user_id, id_genero):
 #   ERR1: "Debe ingresar un nombre para el estado." (nombre vacío o duplicado activo)
 #   ERR2: "No se pudo eliminar el estado. Intente nuevamente." (error técnico o inexistente)
 
-def _estado_usuario_duplicate_active(cur, nombre, exclude_id=None):
-    q = "SELECT idEstadoUsuario FROM estadousuario WHERE nombreEstadoUsuario=%s AND fechaFin IS NULL"
-    params = [nombre]
-    if exclude_id:
-        q += " AND idEstadoUsuario<>%s"
-        params.append(exclude_id)
-    cur.execute(q, tuple(params))
-    return cur.fetchone() is not None
-
 @app.route('/api/v1/admin/catalog/user-statuses', methods=['GET'])
 @requires_permission('MANAGE_USER_STATUSES')
 def admin_user_statuses_list(current_user_id):
@@ -7780,8 +8280,11 @@ def admin_user_statuses_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idEstadoUsuario, nombreEstadoUsuario, fechaFin FROM estadousuario WHERE fechaFin IS NULL ORDER BY nombreEstadoUsuario")
+        cur.execute("SELECT idEstadoUsuario, nombreEstadoUsuario, fechaFin FROM estadousuario ORDER BY nombreEstadoUsuario")
         rows = cur.fetchall() or []
+        for r in rows:
+            if r['fechaFin'] is not None:
+                r['fechaFin'] = r['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'userStatuses': rows}), 200
     except Exception as e:
         log(f"US035 list estadoUsuario error: {e}\n{traceback.format_exc()}")
@@ -7802,8 +8305,6 @@ def admin_user_status_create(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        if _estado_usuario_duplicate_active(cur, nombre):
-            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
         cur.execute("INSERT INTO estadousuario (nombreEstadoUsuario, fechaFin) VALUES (%s, NULL)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
@@ -7841,8 +8342,18 @@ def admin_user_status_detail(current_user_id, id_estado):
 def admin_user_status_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoUsuario') or '').strip()
+    fechaFin = (data.get('fechaFin') or None)
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -7850,9 +8361,7 @@ def admin_user_status_update(current_user_id, id_estado):
         cur.execute("SELECT idEstadoUsuario FROM estadousuario WHERE idEstadoUsuario=%s", (id_estado,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Estado no encontrado.'}), 404
-        if _estado_usuario_duplicate_active(cur, nombre, exclude_id=id_estado):
-            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
-        cur.execute("UPDATE estadousuario SET nombreEstadoUsuario=%s WHERE idEstadoUsuario=%s", (nombre, id_estado))
+        cur.execute("UPDATE estadousuario SET nombreEstadoUsuario=%s, fechaFin=%s WHERE idEstadoUsuario=%s", (nombre, fecha_fin_validated, id_estado))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -7862,6 +8371,8 @@ def admin_user_status_update(current_user_id, id_estado):
         try:
             if conn: conn.close()
         except Exception: pass
+# cURL ejemplo con fechafin null
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/user-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoUsuario\":\"Suspendido\", \"fechaFin\":null}"
 
 @app.route('/api/v1/admin/catalog/user-statuses/<int:id_estado>', methods=['DELETE'])
 @requires_permission('MANAGE_USER_STATUSES')
@@ -7887,7 +8398,7 @@ def admin_user_status_delete(current_user_id, id_estado):
 # cURL ejemplos US035 (token Hola):
 # Listar activos:
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}"
-# Listar todos:
+# Listar todos:_duplicate_
 # curl -X GET "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}"
 # Crear:
 # curl -X POST "{{baseURL}}/api/v1/admin/catalog/user-statuses" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoUsuario\":\"Pendiente\"}"
@@ -7950,7 +8461,7 @@ def admin_permission_create(current_user_id):
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
         if _permiso_duplicate_active(cur, nombre):
-            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+            return jsonify({'errorCode':'ERR1','message':'El nombre del permiso esta duplicado.'}), 400
         cur.execute("INSERT INTO permiso (nombrePermiso, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
         conn.commit()
         new_id = cur.lastrowid
@@ -7999,7 +8510,7 @@ def admin_permission_update(current_user_id, id_permiso):
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR1','message':'Permiso no encontrado.'}), 404
         if _permiso_duplicate_active(cur, nombre, exclude_id=id_permiso):
-            return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el permiso.'}), 400
+            return jsonify({'errorCode':'ERR1','message':'El nombre del permiso esta duplicado.'}), 400
         cur.execute("UPDATE permiso SET nombrePermiso=%s, descripcion=%s WHERE idPermiso=%s", (nombre, descripcion, id_permiso))
         conn.commit()
         return jsonify({'ok':True}), 200
@@ -8246,14 +8757,17 @@ def _tipo_institucion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/institution-types', methods=['GET'])
-@requires_permission('MANAGE_INSTITUTION_TYPES')
+# @requires_permission(['MANAGE_INSTITUTION_TYPES', 'ADMIN_APPROVE_INSTITUTION'])
 def admin_institution_types_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idTipoInstitucion, nombreTipoInstitucion, fechaFin FROM tipoinstitucion WHERE fechaFin IS NULL ORDER BY nombreTipoInstitucion")
+        cur.execute("SELECT idTipoInstitucion, nombreTipoInstitucion, fechaFin FROM tipoinstitucion ORDER BY nombreTipoInstitucion")
         tipos = cur.fetchall() or []
+        for row in tipos:
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'institutionTypes': tipos}), 200
     except Exception as e:
         log(f"US038 list tipoInstitucion error: {e}\n{traceback.format_exc()}")
@@ -8313,8 +8827,18 @@ def admin_institution_type_detail(current_user_id, id_tipo):
 def admin_institution_type_update(current_user_id, id_tipo):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreTipoInstitucion') or '').strip()
+    fechaFin = (data.get('fechaFin') or None)
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -8324,7 +8848,7 @@ def admin_institution_type_update(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Tipo de institución no encontrado.'}), 404
         if _tipo_institucion_duplicate_active(cur, nombre, exclude_id=id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
-        cur.execute("UPDATE tipoinstitucion SET nombreTipoInstitucion=%s WHERE idTipoInstitucion=%s", (nombre, id_tipo))
+        cur.execute("UPDATE tipoinstitucion SET nombreTipoInstitucion=%s, fechaFin=%s WHERE idTipoInstitucion=%s", (nombre, fecha_fin_validated, id_tipo))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -8345,7 +8869,7 @@ def admin_institution_type_delete(current_user_id, id_tipo):
         cur.execute("SELECT idTipoInstitucion FROM tipoinstitucion WHERE idTipoInstitucion=%s", (id_tipo,))
         if not cur.fetchone():
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de institución. Intente nuevamente.'}), 404
-        cur.execute("UPDATE tipoinstitucion SET fechaFin=NOW() WHERE idTipoInstitucion=%s AND fechaFin IS NULL", (id_tipo,))
+        cur.execute("UPDATE tipoinstitucion SET fechaFin=NOW() WHERE idTipoInstitucion=%s", (id_tipo,))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -8556,8 +9080,13 @@ def admin_aptitudes_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja FROM aptitud WHERE fechaBaja IS NULL ORDER BY nombreAptitud")
+        cur.execute("SELECT idAptitud, nombreAptitud, descripcion, fechaAlta, fechaBaja FROM aptitud ORDER BY nombreAptitud")
         rows = cur.fetchall() or []
+        for r in rows:
+            if r['fechaAlta']:
+                r['fechaAlta'] = r['fechaAlta'].strftime('%Y-%m-%d %H:%M:%S')
+            if r['fechaBaja']:
+                r['fechaBaja'] = r['fechaBaja'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'aptitudes': rows}), 200
     except Exception as e:
         log(f"US040 list aptitud error: {e}\n{traceback.format_exc()}")
@@ -8688,8 +9217,18 @@ def admin_aptitud_update(current_user_id, id_aptitud):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreAptitud') or '').strip()
     descripcion = (data.get('descripcion') or '').strip() or None
+    fechaFin = (data.get('fechaFin') or None)
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -8699,7 +9238,7 @@ def admin_aptitud_update(current_user_id, id_aptitud):
             return jsonify({'errorCode':'ERR1','message':'Aptitud no encontrada.'}), 404
         if _aptitud_duplicate_active(cur, nombre, exclude_id=id_aptitud):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
-        cur.execute("UPDATE aptitud SET nombreAptitud=%s, descripcion=%s WHERE idAptitud=%s", (nombre, descripcion, id_aptitud))
+        cur.execute("UPDATE aptitud SET nombreAptitud=%s, descripcion=%s, fechaBaja=%s WHERE idAptitud=%s", (nombre, descripcion, fecha_fin_validated, id_aptitud))
         conn.commit()
         enviar_datos_aws()
         return jsonify({'ok':True}), 200
@@ -9034,8 +9573,11 @@ def admin_institution_states_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion FROM estadoinstitucion ORDER BY nombreEstadoInstitucion")
+        cur.execute("SELECT idEstadoInstitucion, nombreEstadoInstitucion, fechaFin FROM estadoinstitucion ORDER BY nombreEstadoInstitucion")
         rows = cur.fetchall() or []
+        for row in rows:
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'institutionStates': rows}), 200
     except Exception as e:
         log(f"US043 list estadoinstitucion error: {e}\n{traceback.format_exc()}")
@@ -9095,8 +9637,18 @@ def admin_institution_state_detail(current_user_id, id_estado):
 def admin_institution_state_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoInstitucion') or '').strip()
+    fechaFin = data.get('fechaFin') or None
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -9106,7 +9658,7 @@ def admin_institution_state_update(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR1','message':'Estado de institución no encontrado.'}), 404
         if _estado_institucion_duplicate_active(cur, nombre, exclude_id=id_estado):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
-        cur.execute("UPDATE estadoinstitucion SET nombreEstadoInstitucion=%s WHERE idEstadoInstitucion=%s", (nombre, id_estado))
+        cur.execute("UPDATE estadoinstitucion SET nombreEstadoInstitucion=%s, fechaFin=%s WHERE idEstadoInstitucion=%s", (nombre, fecha_fin_validated, id_estado))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -9167,8 +9719,11 @@ def admin_career_institution_statuses_list(current_user_id):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin FROM estadocarrerainstitucion WHERE fechaFin IS NULL ORDER BY nombreEstadoCarreraInstitucion")
+        cur.execute("SELECT idEstadoCarreraInstitucion, nombreEstadoCarreraInstitucion, fechaFin FROM estadocarrerainstitucion ORDER BY nombreEstadoCarreraInstitucion")
         rows = cur.fetchall() or []
+        for row in rows:
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
         return jsonify({'careerInstitutionStatuses': rows}), 200
     except Exception as e:
         log(f"US044 list estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
@@ -9228,8 +9783,18 @@ def admin_career_institution_status_detail(current_user_id, id_estado):
 def admin_career_institution_status_update(current_user_id, id_estado):
     data = request.get_json(silent=True) or {}
     nombre = (data.get('nombreEstadoCarreraInstitucion') or '').strip()
+    fechaFin = data.get('fechaFin') or None
     if not nombre:
         return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
+    
+    # Validar fechaFin si se proporciona
+    fecha_fin_validated = None
+    if fechaFin:
+        is_valid, normalized_date, error_msg = validate_date_string(fechaFin)
+        if not is_valid:
+            return jsonify({'errorCode':'ERR1','message': error_msg}), 400
+        fecha_fin_validated = normalized_date
+    
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -9239,7 +9804,7 @@ def admin_career_institution_status_update(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR1','message':'Estado de carrera no encontrado.'}), 404
         if _estado_carrera_institucion_duplicate_active(cur, nombre, exclude_id=id_estado):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
-        cur.execute("UPDATE estadocarrerainstitucion SET nombreEstadoCarreraInstitucion=%s WHERE idEstadoCarreraInstitucion=%s", (nombre, id_estado))
+        cur.execute("UPDATE estadocarrerainstitucion SET nombreEstadoCarreraInstitucion=%s, fechaFin=%s WHERE idEstadoCarreraInstitucion=%s", (nombre, fecha_fin_validated, id_estado))
         conn.commit()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -9249,6 +9814,8 @@ def admin_career_institution_status_update(current_user_id, id_estado):
         try:
             if conn: conn.close()
         except Exception: pass
+# curl ejemplo con fechaFin:
+# curl -X PUT "{{baseURL}}/api/v1/admin/catalog/career-institution-statuses/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombreEstadoCarreraInstitucion\":\"Cerrada\",\"fechaFin\":\"2024-12-31 23:59:59\"}"
 
 @app.route('/api/v1/admin/catalog/career-institution-statuses/<int:id_estado>', methods=['DELETE'])
 @requires_permission('MANAGE_CAREER_INSTITUTION_STATUSES')
