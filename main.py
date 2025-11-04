@@ -188,6 +188,54 @@ def validate_date_string(date_str: str) -> tuple:
         return (True, normalized, None)
     except ValueError:
         return (False, None, "Formato de fecha inválido. Use YYYY-MM-DD o YYYY-MM-DD HH:MM:SS")
+    
+
+# -- Volcando estructura para tabla ovo.historialabm
+# CREATE TABLE IF NOT EXISTS `historialabm` (
+#   `idHistorialABM` int(11) NOT NULL AUTO_INCREMENT,
+#   `idUsuario` int(11) NOT NULL,
+#   `detalle` text DEFAULT NULL,
+#   `fechaHistorial` datetime NOT NULL DEFAULT current_timestamp(),
+#   PRIMARY KEY (`idHistorialABM`),
+#   KEY `FK_historialabm_usuario` (`idUsuario`),
+#   CONSTRAINT `FK_historialabm_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON UPDATE CASCADE
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.tipoaccion
+# CREATE TABLE IF NOT EXISTS `tipoaccion` (
+#   `idTipoAccion` int(11) NOT NULL AUTO_INCREMENT,
+#   `nombreTipoAccion` varchar(50) DEFAULT NULL,
+#   PRIMARY KEY (`idTipoAccion`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando datos para la tabla ovo.tipoaccion: ~3 rows (aproximadamente)
+# INSERT INTO `tipoaccion` (`idTipoAccion`, `nombreTipoAccion`) VALUES
+# 	(1, 'ACTUALIZACION'),
+# 	(2, 'MODIFICACION'),
+# 	(3, 'ELIMINACION');
+
+def auditoria_log(usuario_id: int, accion: str, detalles: str = None):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        cursor.execute("SELECT idTipoAccion FROM tipoaccion WHERE nombreTipoAccion = %s", (accion,))
+        id_tipo_accion = cursor.fetchone()
+        id_tipo_accion = id_tipo_accion[0] if id_tipo_accion else None
+
+        cursor.execute(
+            "INSERT INTO historialabm (idUsuario, detalle, fechaHistorial, idTipoAccion) "
+            "VALUES (%s, %s, NOW(), %s)",
+            (usuario_id, detalles, id_tipo_accion)
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error al registrar auditoría: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 # ============================ AUTENTICACIÓN (US001) ============================
 EMAIL_REGEX = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
@@ -889,7 +937,7 @@ def obtener_grupos_de_usuario(user_id: int):
 
 # Endpoint para listar todos los usuarios
 @app.route('/api/v1/admin/users', methods=['GET'])
-@requires_permission('MANAGE_PROFILE')
+@requires_permission(['MANAGE_PROFILE','ASIGN_PERM'])
 def admin_list_users(current_user_id):
     """Listado de usuarios con sus grupos activos."""
     conn = None
@@ -898,7 +946,7 @@ def admin_list_users(current_user_id):
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """
-            SELECT u.idUsuario, u.nombre, u.apellido, u.mail,
+            SELECT u.idUsuario, u.nombre, u.apellido, u.mail, u.fechaAlta,
                GROUP_CONCAT(g.nombreGrupo ORDER BY g.nombreGrupo SEPARATOR ',') AS grupos,
                eu.nombreEstadoUsuario AS estado
             FROM usuario u
@@ -911,6 +959,11 @@ def admin_list_users(current_user_id):
             """
         )
         rows = cur.fetchall() or []
+
+        # YYYY-MM-DD HH:MM:SS
+        for r in rows:
+            if r['fechaAlta']:
+                r['fechaAlta'] = r['fechaAlta'].strftime("%Y-%m-%d %H:%M:%S")
         
         data = [
             {
@@ -922,6 +975,7 @@ def admin_list_users(current_user_id):
                 "estado": r.get('estado') or 'Desconocido',
                 "permisos_de_grupo": obtener_permisos_de_grupo_de_usuario(r['idUsuario']),
                 "permisos_directos": obtener_permisos_directos_de_usuario(r['idUsuario']),
+                "fechaAlta": r.get('fechaAlta')
             }
             for r in rows
         ]
@@ -1003,12 +1057,11 @@ def admin_get_user_permissions(current_user_id, user_id: int):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        # Obtener todos los permisos activos del sistema con sus categorías
+        # Obtener todos los permisos activos del sistema
         # y marcar si el usuario los tiene y si es editable (directo vs por grupo)
         cur.execute(
             """
-            SELECT p.idPermiso, p.nombrePermiso, p.descripcion, 
-                   cp.nombreCategoriaPermiso,
+            SELECT p.idPermiso, p.nombrePermiso, p.descripcion,
                    CASE 
                        WHEN direct_perms.idPermiso IS NOT NULL OR group_perms.idPermiso IS NOT NULL THEN 1
                        ELSE 0
@@ -1018,7 +1071,6 @@ def admin_get_user_permissions(current_user_id, user_id: int):
                        ELSE 0
                    END AS is_editable
             FROM permiso p
-            LEFT JOIN categoriapermiso cp ON cp.idCategoriaPermiso = p.idCategoriaPermiso
             LEFT JOIN (
                 SELECT DISTINCT p.idPermiso
                 FROM usuariopermiso up
@@ -1035,20 +1087,16 @@ def admin_get_user_permissions(current_user_id, user_id: int):
                 AND (pg.fechaFin IS NULL or pg.fechaFin > NOW())
             ) group_perms ON group_perms.idPermiso = p.idPermiso
             WHERE p.fechaFin IS NULL OR p.fechaFin > NOW()
-            ORDER BY cp.nombreCategoriaPermiso, p.nombrePermiso
+            ORDER BY p.nombrePermiso
             """,
             (user_id, user_id)
         )
         rows = cur.fetchall() or []
         
-        # Agrupar permisos por categoría
-        grouped_permissions = {}
+        # Devolver lista plana de permisos
+        permissions = []
         for row in rows:
-            categoria = row['nombreCategoriaPermiso'] or 'Sin Categoría'
-            if categoria not in grouped_permissions:
-                grouped_permissions[categoria] = []
-            
-            grouped_permissions[categoria].append({
+            permissions.append({
                 'idPermiso': row['idPermiso'],
                 'nombrePermiso': row['nombrePermiso'],
                 'descripcion': row['descripcion'],
@@ -1056,7 +1104,7 @@ def admin_get_user_permissions(current_user_id, user_id: int):
                 'is_editable': bool(row['is_editable'])
             })
         
-        return jsonify(grouped_permissions), 200
+        return jsonify(permissions), 200
     except Exception as e:
         log(f"/admin/users/{user_id}/permissions GET error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
@@ -1103,6 +1151,10 @@ def admin_set_user_group(current_user_id, user_id: int):
             (user_id, id_grupo)
         )
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Asignación de grupo idGrupo={id_grupo} a usuario idUsuario={user_id}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         conn.rollback()
@@ -1130,6 +1182,10 @@ def admin_remove_user_group(current_user_id, user_id: int, id_grupo: int):
         if cur.rowcount == 0:
             return jsonify({"errorCode": "ERR1", "message": "El usuario no está en este grupo"}), 400
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de grupo idGrupo={id_grupo} de usuario idUsuario={user_id}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         conn.rollback()
@@ -1172,6 +1228,10 @@ def admin_add_user_permission(current_user_id, user_id: int):
             (user_id, id_permiso)
         )
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Asignación de permiso idPermiso={id_permiso} a usuario idUsuario={user_id}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         conn.rollback()
@@ -1205,6 +1265,10 @@ def admin_remove_user_permission(current_user_id, user_id: int, id_permiso: int)
             (user_id, id_permiso)
         )
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de permiso idPermiso={id_permiso} de usuario idUsuario={user_id}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         conn.rollback()
@@ -1246,6 +1310,10 @@ def admin_delete_user(current_user_id, user_id: int):
             (user_id, baja_id)
         )
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Cambio de estado a 'Baja' para usuario idUsuario={user_id}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         conn.rollback()
@@ -1357,6 +1425,10 @@ def admin_set_user_permissions_bulk(current_user_id, user_id: int):
                 (user_id, pid)
             )
         conn.commit()
+        
+        # Registrar en auditoría
+        detalle_cambios = f"Reemplazo masivo de permisos para usuario idUsuario={user_id}: Agregados={to_add}, Eliminados={to_close}"
+        auditoria_log(current_user_id, "MODIFICACION", detalle_cambios)
 
         return jsonify({"ok": True, "summary": {"added": to_add, "removed": to_close}}), 200
     except Exception as e:
@@ -1793,124 +1865,53 @@ def admin_access_history_export(current_user_id):
 
 # ============================ ADMIN: Auditoría de acciones (US006) ============================
 
+# -- Volcando estructura para tabla ovo.historialabm
+# CREATE TABLE IF NOT EXISTS `historialabm` (
+#   `idHistorialABM` int(11) NOT NULL AUTO_INCREMENT,
+#   `idUsuario` int(11) NOT NULL,
+#   `idTipoAccion` int(11) NOT NULL,
+#   `detalle` text DEFAULT NULL,
+#   `fechaHistorial` datetime NOT NULL DEFAULT current_timestamp(),
+#   PRIMARY KEY (`idHistorialABM`),
+#   KEY `FK_historialabm_usuario` (`idUsuario`),
+#   KEY `FK_historialabm_tipoaccion` (`idTipoAccion`),
+#   CONSTRAINT `FK_historialabm_tipoaccion` FOREIGN KEY (`idTipoAccion`) REFERENCES `tipoaccion` (`idTipoAccion`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+#   CONSTRAINT `FK_historialabm_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando datos para la tabla ovo.historialabm: ~2 rows (aproximadamente)
+# INSERT INTO `historialabm` (`idHistorialABM`, `idUsuario`, `idTipoAccion`, `detalle`, `fechaHistorial`) VALUES
+# 	(1, 1, 3, 'Eliminación de estado de usuario idEstadoUsuario=9', '2025-11-04 12:13:52'),
+# 	(2, 1, 3, 'Eliminación de estado de usuario idEstadoUsuario=7', '2025-11-04 12:13:54');
+
+# -- Volcando estructura para tabla ovo.tipoaccion
+# CREATE TABLE IF NOT EXISTS `tipoaccion` (
+#   `idTipoAccion` int(11) NOT NULL AUTO_INCREMENT,
+#   `nombreTipoAccion` varchar(50) DEFAULT NULL,
+#   PRIMARY KEY (`idTipoAccion`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando datos para la tabla ovo.tipoaccion: ~3 rows (aproximadamente)
+# INSERT INTO `tipoaccion` (`idTipoAccion`, `nombreTipoAccion`) VALUES
+# 	(1, 'ACTUALIZACION'),
+# 	(2, 'MODIFICACION'),
+# 	(3, 'ELIMINACION');
+
+
 # Endpoint para obtener el historial de auditoría
 @app.route('/api/v1/admin/audit', methods=['GET'])
 @requires_permission('AUDIT_HISTORY')
 def admin_audit_list(current_user_id):
-    """Listado de auditoría (historial ABM) con filtros.
-    Filtros opcionales (query params):
-    - userId: int
-    - from: fecha desde (YYYY-MM-DD)
-    - to: fecha hasta (YYYY-MM-DD) no puede superar hoy
-    - tipoAccion: nombre (e.g., alta, modificación, baja)
-    - tipoAccionId: int
-    - modulo: uno de [usuario, grupo, permiso, permisogrupo, carrera, genero, provincia, localidad,
-               estadoacceso, estadocarrerainstitucion, estadousuario, pais, tipoinstitucion, tipocarrera,
-               modalidadcarrerainstitucion, aptitud]
-    - claseId: int (ID del registro afectado del módulo elegido)
-    - page, pageSize
+    """
+    Listado de auditoría con paginación.
+    Query params opcionales:
+    - page: número de página (default 1)
+    - pageSize: tamaño de página (default 50, max 1000)
     """
     conn = None
     try:
-        import datetime as _dt
         args = request.args
-
-        # Validaciones comunes
-        def err_filtros():
-            return jsonify({"errorCode": "ERR1", "message": "Error en los filtros aplicados. Revise los campos e intente de nuevo."}), 400
-
-        clauses = []
-        params = []
-
-        # userId
-        user_id_s = args.get('userId')
-        if user_id_s:
-            try:
-                user_id_val = int(user_id_s)
-                clauses.append("ha.idUsuario = %s")
-                params.append(user_id_val)
-            except Exception:
-                return err_filtros()
-
-        # Fechas
-        def parse_date(s):
-            return _dt.datetime.strptime(s, '%Y-%m-%d').date()
-
-        date_from_s = args.get('from')
-        date_to_s = args.get('to')
-        today = _dt.date.today()
-        date_from = None
-        date_to = None
-        try:
-            if date_from_s:
-                date_from = parse_date(date_from_s)
-            if date_to_s:
-                date_to = parse_date(date_to_s)
-        except Exception:
-            return err_filtros()
-
-        if date_to and date_to > today:
-            return err_filtros()
-        if date_from and date_to and date_from > date_to:
-            return err_filtros()
-
-        if date_from:
-            clauses.append("ha.fechaHistorial >= %s")
-            params.append(_dt.datetime.combine(date_from, _dt.time.min))
-        if date_to:
-            clauses.append("ha.fechaHistorial <= %s")
-            params.append(_dt.datetime.combine(date_to, _dt.time.max))
-
-        # Tipo de acción
-        tipo_accion_id_s = args.get('tipoAccionId')
-        tipo_accion_s = args.get('tipoAccion')
-        if tipo_accion_id_s:
-            try:
-                tipo_accion_id = int(tipo_accion_id_s)
-                clauses.append("ha.idTipoAccion = %s")
-                params.append(tipo_accion_id)
-            except Exception:
-                return err_filtros()
-        elif tipo_accion_s:
-            clauses.append("ta.nombreTipoAccion = %s")
-            params.append(tipo_accion_s)
-
-        # Módulo y claseId
-        modulo_map = {
-            'usuario': 'ha.idUsuario',
-            'grupo': 'ha.idGrupo',
-            'permiso': 'ha.idPermiso',
-            'permisogrupo': 'ha.idPermisoGrupo',
-            'carrera': 'ha.idCarrera',
-            'genero': 'ha.idGenero',
-            'provincia': 'ha.idProvincia',
-            'localidad': 'ha.idLocalidad',
-            'estadoacceso': 'ha.idEstadoAcceso',
-            'estadocarrerainstitucion': 'ha.idEstadoCarreraInstitucion',
-            'estadousuario': 'ha.idEstadoUsuario',
-            'pais': 'ha.idPais',
-            'tipoinstitucion': 'ha.idTipoInstitucion',
-            'tipocarrera': 'ha.idTipoCarrera',
-            'modalidadcarrerainstitucion': 'ha.idModalidadCarreraInstitucion',
-            'aptitud': 'ha.idAptitud',
-        }
-        modulo = (args.get('modulo') or '').strip().lower()
-        clase_id_s = args.get('claseId')
-        if modulo:
-            if modulo not in modulo_map:
-                return err_filtros()
-            field = modulo_map[modulo]
-            clauses.append(f"{field} IS NOT NULL")
-            if clase_id_s:
-                try:
-                    clase_id = int(clase_id_s)
-                    clauses.append(f"{field} = %s")
-                    params.append(clase_id)
-                except Exception:
-                    return err_filtros()
-
-        where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-
+        
         # Paginación
         try:
             page = int(args.get('page', '1'))
@@ -1918,74 +1919,44 @@ def admin_audit_list(current_user_id):
             if page < 1 or page_size < 1 or page_size > 1000:
                 raise ValueError()
         except Exception:
-            return err_filtros()
+            return jsonify({"errorCode": "ERR1", "message": "Error en los parámetros de paginación"}), 400
+        
         offset = (page - 1) * page_size
 
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        sql = f"""
-            SELECT ha.fechaHistorial,
+        sql = """
+            SELECT ha.idHistorialABM,
                    ha.idUsuario,
-                   u.nombre, u.apellido,
+                   CONCAT(u.nombre, ' ', u.apellido) AS nombreUsuario,
+                   ha.idTipoAccion,
                    ta.nombreTipoAccion,
-                   ha.idAptitud, ha.idCarrera, ha.idGenero, ha.idGrupo, ha.idPermiso, ha.idPermisoGrupo,
-                   ha.idProvincia, ha.idLocalidad, ha.idEstadoAcceso, ha.idEstadoCarreraInstitucion,
-                   ha.idEstadoUsuario, ha.idPais, ha.idTipoInstitucion, ha.idTipoCarrera, ha.idModalidadCarreraInstitucion
+                   ha.detalle,
+                   ha.fechaHistorial
             FROM historialabm ha
             LEFT JOIN usuario u ON u.idUsuario = ha.idUsuario
             LEFT JOIN tipoaccion ta ON ta.idTipoAccion = ha.idTipoAccion
-            {where_sql}
             ORDER BY ha.fechaHistorial DESC
             LIMIT %s OFFSET %s
         """
-        cur.execute(sql, tuple(params + [page_size, offset]))
+        cur.execute(sql, (page_size, offset))
         rows = cur.fetchall() or []
-
-        # Determinar módulo/clase por primera FK no nula (orden estable)
-        fk_order = [
-            ('usuario', 'idUsuario'),
-            ('grupo', 'idGrupo'),
-            ('permiso', 'idPermiso'),
-            ('permisogrupo', 'idPermisoGrupo'),
-            ('carrera', 'idCarrera'),
-            ('genero', 'idGenero'),
-            ('provincia', 'idProvincia'),
-            ('localidad', 'idLocalidad'),
-            ('estadoacceso', 'idEstadoAcceso'),
-            ('estadocarrerainstitucion', 'idEstadoCarreraInstitucion'),
-            ('estadousuario', 'idEstadoUsuario'),
-            ('pais', 'idPais'),
-            ('tipoinstitucion', 'idTipoInstitucion'),
-            ('tipocarrera', 'idTipoCarrera'),
-            ('modalidadcarrerainstitucion', 'idModalidadCarreraInstitucion'),
-            ('aptitud', 'idAptitud'),
-        ]
-
-        def pick_modulo(row):
-            for name, col in fk_order:
-                if row.get(col) is not None:
-                    return name, row.get(col)
-            return None, None
 
         data = []
         for r in rows:
-            modulo_name, clase_id = pick_modulo(r)
             data.append({
-                "fecha": (r.get('fechaHistorial').isoformat(sep=' ') if r.get('fechaHistorial') else None),
-                "usuario": {
-                    "id": r.get('idUsuario'),
-                    "nombre": r.get('nombre'),
-                    "apellido": r.get('apellido'),
-                },
-                "tipoAccion": r.get('nombreTipoAccion'),
-                "modulo": modulo_name,
-                "claseId": clase_id,
+                "idUsuario": r.get('idUsuario'),
+                "nombreUsuario": r.get('nombreUsuario'),
+                "idTipoAccion": r.get('idTipoAccion'),
+                "nombreTipoAccion": r.get('nombreTipoAccion'),
+                "detalle": r.get('detalle'),
+                "fecha": (r.get('fechaHistorial').isoformat(sep=' ') if r.get('fechaHistorial') else None)
             })
 
         return jsonify(data), 200
+
     except Exception as e:
         log(f"/admin/audit GET error: {e}\n{traceback.format_exc()}")
-        # Error genérico (no especificado en HU) -> 500
         return jsonify({"message": "Error al obtener auditoría"}), 500
     finally:
         try:
@@ -1993,6 +1964,7 @@ def admin_audit_list(current_user_id):
                 conn.close()
         except Exception:
             pass
+
 
 # Endpoint para exportar el historial de auditoría
 @app.route('/api/v1/admin/audit/export', methods=['GET'])
@@ -2432,6 +2404,9 @@ def register_email_password():
                 return jsonify({"errorCode": "ERR3", "message": "Error al registrar usuario"}), 500
             cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario, fechaInicio, fechaFin) VALUES (%s, %s, NOW(), NULL)", (int(user['idUsuario']), int(estado['idEstadoUsuario'])))
             conn.commit()
+            
+            # Registrar en auditoría (usar el ID del usuario recién creado como autor)
+            auditoria_log(user['idUsuario'], "ACTUALIZACION", f"Registro de nuevo usuario idUsuario={user['idUsuario']}, idGenero={idGenero}, idLocalidad={idLocalidad}")
         
         # Enviar el correo para la validacion del email
         send_email(user['mail'], "Verificación de correo OVO", f"""
@@ -3015,6 +2990,7 @@ def user_list_tests(current_user_id):
                     tci.idCarreraInstitucion,
                     ci.tituloCarrera,
                     ci.nombreCarrera,
+                    ci.idInstitucion,
                     i.nombreInstitucion
                 FROM testcarrerainstitucion tci
                 JOIN carrerainstitucion ci ON ci.idCarreraInstitucion = tci.idCarreraInstitucion
@@ -3033,6 +3009,7 @@ def user_list_tests(current_user_id):
                     "tituloCarrera": carrera.get('tituloCarrera'),
                     "nombreCarrera": carrera.get('nombreCarrera'),
                     "nombreInstitucion": carrera.get('nombreInstitucion'),
+                    "idInstitucion": carrera.get('idInstitucion'),
                     "afinidadCarrera": round(float(carrera.get('afinidadCarrera') or 0), 2)
                 }
                 for carrera in carreras_rows
@@ -3672,11 +3649,16 @@ def career_institution_detail(current_user_id, id_carrera: int, id_ci: int):
             """
             SELECT ci.*, c.nombreCarrera AS nombreCarreraBase,
                    i.idInstitucion, i.nombreInstitucion, i.siglaInstitucion, i.telefono, i.mail, i.sitioWeb, i.urlLogo, i.direccion,
-                   m.nombreModalidad
+                   i.idLocalidad,
+                   m.nombreModalidad,
+                   l.idProvincia,
+                   p.idPais
             FROM carrerainstitucion ci
             JOIN carrera c ON c.idCarrera = ci.idCarrera
             LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion
             LEFT JOIN modalidadcarrerainstitucion m ON m.idModalidadCarreraInstitucion = ci.idModalidadCarreraInstitucion
+            LEFT JOIN localidad l ON l.idLocalidad = i.idLocalidad
+            LEFT JOIN provincia p ON p.idProvincia = l.idProvincia
             WHERE ci.idCarreraInstitucion = %s AND ci.idCarrera = %s
             """,
             (id_ci, id_carrera)
@@ -3729,6 +3711,9 @@ def career_institution_detail(current_user_id, id_carrera: int, id_ci: int):
                 "sitioWeb": ci.get('sitioWeb'),
                 "urlLogo": ci.get('urlLogo'),
                 "direccion": ci.get('direccion'),
+                "idPais": ci.get('idPais'),
+                "idProvincia": ci.get('idProvincia'),
+                "idLocalidad": ci.get('idLocalidad'),
             },
             "preguntasFrecuentes": faq,
             "multimedia": multimedia,
@@ -3759,11 +3744,16 @@ def career_institution_detail_alias(current_user_id, id_ci: int):
             """
             SELECT ci.*, c.nombreCarrera AS nombreCarreraBase,
                    i.idInstitucion, i.nombreInstitucion, i.siglaInstitucion, i.telefono, i.mail, i.sitioWeb, i.urlLogo, i.direccion,
-                   m.nombreModalidad
+                   i.idLocalidad,
+                   m.nombreModalidad,
+                   l.idProvincia,
+                   p.idPais
             FROM carrerainstitucion ci
             JOIN carrera c ON c.idCarrera = ci.idCarrera
             LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion
             LEFT JOIN modalidadcarrerainstitucion m ON m.idModalidadCarreraInstitucion = ci.idModalidadCarreraInstitucion
+            LEFT JOIN localidad l ON l.idLocalidad = i.idLocalidad
+            LEFT JOIN provincia p ON p.idProvincia = l.idProvincia
             WHERE ci.idCarreraInstitucion = %s
             """,
             (id_ci,)
@@ -3816,6 +3806,9 @@ def career_institution_detail_alias(current_user_id, id_ci: int):
                 "sitioWeb": ci.get('sitioWeb'),
                 "urlLogo": ci.get('urlLogo'),
                 "direccion": ci.get('direccion'),
+                "idPais": ci.get('idPais'),
+                "idProvincia": ci.get('idProvincia'),
+                "idCiudad": ci.get('idLocalidad'),
             },
             "preguntasFrecuentes": faq,
             "multimedia": multimedia,
@@ -4185,6 +4178,8 @@ def institution_detail(current_user_id, id_institucion: int):
                 conn.close()
         except Exception:
             pass
+
+# Endpoint para ver el historial de estados de una institucion
 
 # ============================ Perfil de Usuario (US016) ============================
 
@@ -4910,7 +4905,12 @@ def my_institution_careers_add(current_user_id: int):
                 nombre_ci, titulo, monto, id_estado, id_carrera, id_modalidad, id_inst
             )
         )
+        id_ci_creado = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de carrerainstitucion idCarreraInstitucion={id_ci_creado}, idCarrera={id_carrera}, idEstadoCarreraInstitucion={id_estado}")
+        
         return jsonify({"ok": True}), 201
     except Exception as e:
         try:
@@ -4949,6 +4949,7 @@ def my_institution_careers_edit(current_user_id: int, id_ci: int):
         monto = data.get('montoCuota') if data.get('montoCuota') is not None else None
         fecha_inicio = data.get('fechaInicio') if data.get('fechaInicio') is not None else None
         fecha_fin = data.get('fechaFin') if data.get('fechaFin') is not None else None
+        idCarrera = data.get('idCarrera')  # Cambia la carrera base
 
         # Normalizaciones
         try:
@@ -5045,12 +5046,26 @@ def my_institution_careers_edit(current_user_id: int, id_ci: int):
         if ff_dt is not None:
             sets.append("fechaFin=%s")
             params.append(ff_dt)
+        if idCarrera is not None:
+            try:
+                cur.execute("SELECT 1 FROM carrera WHERE idCarrera=%s", (idCarrera,))
+                if not cur.fetchone():
+                    return jsonify({"errorCode": "ERR1", "message": "Carrera no encontrada"}), 404
+            except Exception as e:
+                return jsonify({"errorCode": "ERR1", "message": "Error al validar carrera"}), 400
+            sets.append("idCarrera=%s")
+            params.append(idCarrera)
 
         if not sets:
             return jsonify({"errorCode": "ERR1", "message": "Debe completar todos los campos obligatorios para guardar los cambios."}), 400
 
         cur.execute(f"UPDATE carrerainstitucion SET {', '.join(sets)} WHERE idCarreraInstitucion=%s", tuple(params + [id_ci]))
         conn.commit()
+        
+        # Registrar en auditoría
+        detalle_campos = ", ".join([f"{s.split('=')[0]}" for s in sets])
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de carrerainstitucion idCarreraInstitucion={id_ci}, campos: {detalle_campos}")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         try:
@@ -5107,6 +5122,10 @@ def my_institution_careers_delete(current_user_id: int, id_ci: int):
             (id_estado_inactiva, id_ci)
         )
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de carrerainstitucion idCarreraInstitucion={id_ci}, cambio a estado Inactiva")
+        
         return jsonify({"ok": True}), 200
     except Exception as e:
         try:
@@ -5529,8 +5548,8 @@ def career_aptitudes_save(current_user_id:int, id_ci:int):
                     raise ValueError()
                 id_ap = int(item.get('idAptitud') if 'idAptitud' in item else item.get('id') )
                 puntaje = int(item.get('puntaje') if 'puntaje' in item else item.get('afinidad') )
-                if puntaje < 0 or puntaje > 99:
-                    raise ValueError()
+                if puntaje < 0 or puntaje > 100:
+                    return jsonify({"errorCode":"ERR01","message":"Los valores deben estar entre 0 y 100."}), 400
                 parsed.append((id_ap, puntaje))
         except Exception:
             return jsonify({"errorCode":"ERR01","message":"Datos de aptitudes inválidos"}), 400
@@ -6024,7 +6043,11 @@ def get_test_results(current_user_id, id_test):
 # Curl ejemplo endpoint anterior:
 # curl --location '{{baseURL}}/api/v1/tests/1/results' --header 'Authorization: Bearer {{token}}' --data ''
 
-
+# ============================ Estadísticas del Sistema (US023) ============================
+# Tablas involucradas: usuario, usuariogrupo, usuarioestado, carrerainstitucion, institucionestado, test, testcarrerainstitucion
+# Endpoint para obtener estadísticas del sistema para el administrador
+# Filtros obligatorios: from (YYYY-MM-DD), to (YYYY-MM-DD)
+# Filtro opcional: provinceId (ID de provincia)
 
 # Si no hay datos en ninguna métrica solicitada del tablero -> ERR1 (mensaje pedir cambiar filtros).
 # Permiso requerido
@@ -6058,6 +6081,7 @@ def _province_clause(alias_user='u', alias_inst='i'):
         " pr_u.idProvincia = %s "
     )
 
+# Endpoint principal
 @app.route('/api/v1/admin/stats/system', methods=['GET'])
 @requires_permission('VIEW_STATS')
 def admin_stats_system(current_user_id):
@@ -6132,7 +6156,7 @@ def admin_stats_system(current_user_id):
             LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
             {carr_province_join}
             WHERE ci.fechaInicio BETWEEN %s AND %s {carr_province_filter}
-            GROUP BY tipo
+            GROUP BY tc.nombreTipoCarrera
             ORDER BY tipo
             """,
             tuple(params_carr)
@@ -6239,37 +6263,415 @@ def admin_stats_system_export(current_user_id):
     fmt = (request.args.get('format') or 'csv').lower()
     if fmt not in ('csv','pdf'):
         return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
-    # Reutilizar endpoint principal
-    with app.test_request_context(query_string=request.query_string):
-        data_resp, status = admin_stats_system(current_user_id)
-    if status != 200:
-        return data_resp, status
-    payload = data_resp.get_json()
+    
+    from_dt, to_dt, province_id = filters
+    
+    # Obtener los datos directamente sin pasar por los decoradores
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Usuarios por tipo (grupo)
+        province_join, province_condition = _province_clause()
+        params_users = [from_dt, to_dt]
+        province_filter_sql = ''
+        if province_id is not None:
+            province_filter_sql = f" AND {province_condition}"
+            params_users.append(province_id)
+        cur.execute(
+            f"""
+            SELECT g.nombreGrupo AS tipo, COUNT(DISTINCT ug.idUsuario) AS total
+            FROM usuariogrupo ug
+            JOIN grupo g ON g.idGrupo = ug.idGrupo
+            JOIN usuario u ON u.idUsuario = ug.idUsuario
+            {province_join}
+            JOIN usuarioestado ue ON ue.idUsuario = u.idUsuario
+            WHERE (ug.fechaFin IS NULL OR ug.fechaFin > NOW())
+              AND ue.fechaInicio BETWEEN %s AND %s
+              {province_filter_sql}
+            GROUP BY g.nombreGrupo
+            ORDER BY g.nombreGrupo
+            """,
+            tuple(params_users)
+        )
+        usuarios_por_tipo = cur.fetchall() or []
+
+        # Evolución registros (por mes)
+        params_evo = [from_dt, to_dt]
+        if province_id is not None:
+            params_evo.append(province_id)
+        cur.execute(
+            f"""
+            SELECT DATE_FORMAT(ue.fechaInicio, '%Y-%m') AS periodo, COUNT(DISTINCT ue.idUsuario) AS total
+            FROM usuarioestado ue
+            JOIN usuario u ON u.idUsuario = ue.idUsuario
+            {province_join}
+            WHERE ue.fechaInicio BETWEEN %s AND %s
+            {province_filter_sql}
+            GROUP BY periodo
+            ORDER BY periodo
+            """,
+            tuple(params_evo)
+        )
+        evolucion_registros = cur.fetchall() or []
+
+        tests_completados = []
+
+        # Carreras por tipo
+        params_carr = [from_dt, to_dt]
+        carr_province_join = " LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion LEFT JOIN localidad l_i ON l_i.idLocalidad = i.idLocalidad LEFT JOIN provincia pr_i ON pr_i.idProvincia = l_i.idProvincia "
+        carr_province_filter = ''
+        if province_id is not None:
+            carr_province_filter = ' AND pr_i.idProvincia = %s'
+            params_carr.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COALESCE(tc.nombreTipoCarrera,'Sin Tipo') AS tipo, COUNT(DISTINCT ci.idCarreraInstitucion) AS total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            {carr_province_join}
+            WHERE ci.fechaInicio BETWEEN %s AND %s {carr_province_filter}
+            GROUP BY tc.nombreTipoCarrera
+            ORDER BY tipo
+            """,
+            tuple(params_carr)
+        )
+        carreras_por_tipo = cur.fetchall() or []
+
+        # Instituciones por estado
+        params_inst = [from_dt, to_dt]
+        inst_province_join = " LEFT JOIN institucion i ON i.idInstitucion = ie.idInstitucion LEFT JOIN localidad l2 ON l2.idLocalidad = i.idLocalidad LEFT JOIN provincia pr2 ON pr2.idProvincia = l2.idProvincia "
+        inst_province_filter = ''
+        if province_id is not None:
+            inst_province_filter = ' AND pr2.idProvincia = %s'
+            params_inst.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COALESCE(ei.nombreEstadoInstitucion,'Desconocido') AS estado, COUNT(*) AS total
+            FROM (
+                SELECT ie1.idInstitucion, ie1.idEstadoInstitucion
+                FROM institucionestado ie1
+                JOIN (
+                    SELECT idInstitucion, MAX(fechaInicio) maxFecha
+                    FROM institucionestado
+                    WHERE fechaInicio BETWEEN %s AND %s
+                    GROUP BY idInstitucion
+                ) last ON last.idInstitucion = ie1.idInstitucion AND last.maxFecha = ie1.fechaInicio
+            ) latest
+            JOIN institucionestado ie ON ie.idInstitucion = latest.idInstitucion AND ie.idEstadoInstitucion = latest.idEstadoInstitucion
+            LEFT JOIN estadoinstitucion ei ON ei.idEstadoInstitucion = latest.idEstadoInstitucion
+            {inst_province_join}
+            WHERE 1=1 {inst_province_filter}
+            GROUP BY estado
+            ORDER BY estado
+            """,
+            tuple(params_inst)
+        )
+        instituciones_estado = cur.fetchall() or []
+
+        # Tasa de actividad
+        params_act = [from_dt, to_dt]
+        if province_id is not None:
+            params_act.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COUNT(*) totalAccesos, COUNT(DISTINCT ha.idUsuario) usuariosActivos
+            FROM historialacceso ha
+            LEFT JOIN usuario u ON u.idUsuario = ha.idUsuario
+            {province_join}
+            WHERE ha.fecha BETWEEN %s AND %s {province_filter_sql}
+            """,
+            tuple(params_act)
+        )
+        act_row = cur.fetchone() or {"totalAccesos":0,"usuariosActivos":0}
+        
+        params_tot_users = [to_dt]
+        if province_id is not None:
+            params_tot_users.append(province_id)
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ue.idUsuario) total
+            FROM usuarioestado ue
+            JOIN usuario u ON u.idUsuario = ue.idUsuario
+            {province_join}
+            WHERE ue.fechaInicio <= %s {province_filter_sql}
+            """,
+            tuple(params_tot_users)
+        )
+        total_users_row = cur.fetchone() or {"total":0}
+        total_users = total_users_row.get('total') or 0
+        usuarios_activos = act_row.get('usuariosActivos') or 0
+        tasa_act = (usuarios_activos / total_users) if total_users else 0
+
+        payload = {
+            "filters": {"from": str(from_dt), "to": str(to_dt), "provinceId": province_id},
+            "usuariosPorTipo": usuarios_por_tipo,
+            "evolucionRegistros": evolucion_registros,
+            "testsCompletados": tests_completados,
+            "carrerasPorTipo": carreras_por_tipo,
+            "institucionesEstado": instituciones_estado,
+            "actividad": {
+                "totalAccesos": act_row.get('totalAccesos'),
+                "usuariosActivos": usuarios_activos,
+                "totalUsuarios": total_users,
+                "tasaActividad": round(tasa_act,4)
+            }
+        }
+    except Exception as e:
+        log(f"US023 system stats export error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al generar reporte"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
     if fmt == 'csv':
-        import io, csv as _csv
-        buf = io.StringIO()
-        w = _csv.writer(buf)
-        w.writerow(["Sección","Clave","Valor"])
-        for row in payload.get('usuariosPorTipo', []):
-            w.writerow(["UsuariosPorTipo", row['tipo'], row['total']])
-        for row in payload.get('evolucionRegistros', []):
-            w.writerow(["EvolucionRegistros", row['periodo'], row['total']])
-        for row in payload.get('carrerasPorTipo', []):
-            w.writerow(["CarrerasPorTipo", row['tipo'], row['total']])
-        for row in payload.get('institucionesEstado', []):
-            w.writerow(["InstitucionesEstado", row['estado'], row['total']])
-        w.writerow(["Actividad","totalAccesos", payload['actividad']['totalAccesos']])
-        w.writerow(["Actividad","usuariosActivos", payload['actividad']['usuariosActivos']])
-        w.writerow(["Actividad","totalUsuarios", payload['actividad']['totalUsuarios']])
-        w.writerow(["Actividad","tasaActividad", payload['actividad']['tasaActividad']])
-        csv_data = buf.getvalue()
-        from flask import Response
-        return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_system.csv"'})
-    else:  # pdf stub
-        # Simple texto como stub (no genera PDF real)
-        content = "Reporte Sistema (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
-        from flask import Response
-        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_system.pdf"'})
+        try:
+            import io, csv as _csv
+            buf = io.StringIO()
+            w = _csv.writer(buf)
+            w.writerow(["Sección","Clave","Valor"])
+            for row in payload.get('usuariosPorTipo', []):
+                w.writerow(["UsuariosPorTipo", row['tipo'], row['total']])
+            for row in payload.get('evolucionRegistros', []):
+                w.writerow(["EvolucionRegistros", row['periodo'], row['total']])
+            for row in payload.get('carrerasPorTipo', []):
+                w.writerow(["CarrerasPorTipo", row['tipo'], row['total']])
+            for row in payload.get('institucionesEstado', []):
+                w.writerow(["InstitucionesEstado", row['estado'], row['total']])
+            w.writerow(["Actividad","totalAccesos", payload['actividad']['totalAccesos']])
+            w.writerow(["Actividad","usuariosActivos", payload['actividad']['usuariosActivos']])
+            w.writerow(["Actividad","totalUsuarios", payload['actividad']['totalUsuarios']])
+            w.writerow(["Actividad","tasaActividad", payload['actividad']['tasaActividad']])
+            csv_data = buf.getvalue()
+            from flask import Response
+            return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_system.csv"'})
+        except Exception as e:
+            return jsonify({"errorCode":"ERR1","message":"Error al generar CSV"}), 500
+    else:  # pdf
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.units import inch
+            from io import BytesIO
+            from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate, Frame
+            
+            class PDFWithHeaderFooter(BaseDocTemplate):
+                def __init__(self, *args, logo_path=None, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.logo_path = logo_path
+                    frame = Frame(
+                        self.leftMargin, self.bottomMargin, self.width, self.height, id='normal'
+                    )
+                    template = PageTemplate(id='all', frames=[frame], onPage=self._add_header_footer)
+                    self.addPageTemplates([template])
+                
+                def _add_header_footer(self, canvas, doc):
+                    canvas.saveState()
+                    page_width, page_height = A4
+                    
+                    # Encabezado: Logo a la izquierda y texto a la derecha
+                    if self.logo_path and os.path.exists(self.logo_path):
+                        canvas.drawImage(self.logo_path, 36, page_height - 70, width=80, height=40, preserveAspectRatio=True)
+                    
+                    canvas.setFont('Helvetica-Bold', 12)
+                    canvas.drawRightString(page_width - 36, page_height - 50, "ORIENTACIÓN VOCACIONAL ONLINE")
+                    
+                    # Línea separadora debajo del encabezado
+                    canvas.setStrokeColor(colors.grey)
+                    canvas.setLineWidth(0.5)
+                    canvas.line(36, page_height - 75, page_width - 36, page_height - 75)
+                    
+                    # Pie de página: Número de página a la derecha
+                    canvas.setFont('Helvetica', 9)
+                    page_num = canvas.getPageNumber()
+                    canvas.drawRightString(page_width - 36, 20, f"Página {page_num}")
+                    canvas.restoreState()
+            
+            buffer = BytesIO()
+            logo_path = os.path.join(os.path.dirname(__file__), 'OVO_logo.png')
+            doc = PDFWithHeaderFooter(
+                buffer,
+                pagesize=A4,
+                leftMargin=36,
+                rightMargin=36,
+                topMargin=90,
+                bottomMargin=50,
+                logo_path=logo_path
+            )
+            doc.title = "Estadísticas del Sistema"
+            
+            styles = getSampleStyleSheet()
+            elements = []
+            
+            # Título principal
+            title = Paragraph("Estadísticas del Sistema", styles["Heading1"])
+            elements.append(title)
+            elements.append(Spacer(1, 12))
+            
+            # Filtros aplicados
+            filtros_txt = f"Período: {payload['filters']['from']} a {payload['filters']['to']}"
+            if payload['filters']['provinceId']:
+                filtros_txt += f" | Provincia ID: {payload['filters']['provinceId']}"
+            elements.append(Paragraph(filtros_txt, styles["Normal"]))
+            elements.append(Spacer(1, 16))
+            
+            # Usuarios por Tipo
+            if payload.get('usuariosPorTipo'):
+                elements.append(Paragraph("Usuarios por Tipo", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_usuarios = [["Tipo de Usuario", "Total"]]
+                for row in payload['usuariosPorTipo']:
+                    data_usuarios.append([
+                        Paragraph(str(row['tipo']), styles["Normal"]),
+                        Paragraph(str(row['total']), styles["Normal"])
+                    ])
+                table_usuarios = Table(data_usuarios, colWidths=[4*inch, 2*inch])
+                table_usuarios.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_usuarios)
+                elements.append(Spacer(1, 16))
+            
+            # Evolución de Registros
+            if payload.get('evolucionRegistros'):
+                elements.append(Paragraph("Evolución de Registros", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_evolucion = [["Período", "Total"]]
+                for row in payload['evolucionRegistros']:
+                    data_evolucion.append([
+                        Paragraph(str(row['periodo']), styles["Normal"]),
+                        Paragraph(str(row['total']), styles["Normal"])
+                    ])
+                table_evolucion = Table(data_evolucion, colWidths=[4*inch, 2*inch])
+                table_evolucion.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_evolucion)
+                elements.append(Spacer(1, 16))
+            
+            # Carreras por Tipo
+            if payload.get('carrerasPorTipo'):
+                elements.append(Paragraph("Carreras por Tipo", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_carreras = [["Tipo de Carrera", "Total"]]
+                for row in payload['carrerasPorTipo']:
+                    data_carreras.append([
+                        Paragraph(str(row['tipo']), styles["Normal"]),
+                        Paragraph(str(row['total']), styles["Normal"])
+                    ])
+                table_carreras = Table(data_carreras, colWidths=[4*inch, 2*inch])
+                table_carreras.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_carreras)
+                elements.append(Spacer(1, 16))
+            
+            # Instituciones por Estado
+            if payload.get('institucionesEstado'):
+                elements.append(Paragraph("Instituciones por Estado", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_instituciones = [["Estado", "Total"]]
+                for row in payload['institucionesEstado']:
+                    data_instituciones.append([
+                        Paragraph(str(row['estado']), styles["Normal"]),
+                        Paragraph(str(row['total']), styles["Normal"])
+                    ])
+                table_instituciones = Table(data_instituciones, colWidths=[4*inch, 2*inch])
+                table_instituciones.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_instituciones)
+                elements.append(Spacer(1, 16))
+            
+            # Actividad
+            if payload.get('actividad'):
+                elements.append(Paragraph("Actividad del Sistema", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                act = payload['actividad']
+                data_actividad = [
+                    ["Métrica", "Valor"],
+                    [Paragraph("Total Accesos", styles["Normal"]), Paragraph(str(act.get('totalAccesos', 0)), styles["Normal"])],
+                    [Paragraph("Usuarios Activos", styles["Normal"]), Paragraph(str(act.get('usuariosActivos', 0)), styles["Normal"])],
+                    [Paragraph("Total Usuarios", styles["Normal"]), Paragraph(str(act.get('totalUsuarios', 0)), styles["Normal"])],
+                    [Paragraph("Tasa de Actividad", styles["Normal"]), Paragraph(f"{act.get('tasaActividad', 0):.2%}", styles["Normal"])],
+                ]
+                table_actividad = Table(data_actividad, colWidths=[4*inch, 2*inch])
+                table_actividad.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_actividad)
+            
+            # Construir el PDF
+            doc.build(elements)
+            
+            pdf = buffer.getvalue()
+            buffer.close()
+            
+            from flask import Response
+            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"estadisticas_sistema_{ts}.pdf"
+            return Response(
+                pdf,
+                mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+            )
+        except Exception as e:
+            log(f"US023 system stats export PDF error: {e}\n{traceback.format_exc()}")
+            return jsonify({"errorCode":"ERR3","message":"Ocurrió un error al generar el PDF. Intente nuevamente."}), 500
 
 @app.route('/api/v1/admin/stats/users', methods=['GET'])
 @requires_permission('VIEW_STATS')
@@ -6291,13 +6693,17 @@ def admin_stats_users(current_user_id):
             fav_params.append(province_id)
         cur.execute(
             f"""
-            SELECT ci.idCarreraInstitucion AS idCI, COALESCE(c.nombreCarrera,'(Sin nombre)') AS carrera, COUNT(*) total
+            SELECT ci.idCarreraInstitucion AS idCI, 
+                   COALESCE(ci.nombreCarrera, c.nombreCarrera, '(Sin nombre)') AS carrera,
+                   COALESCE(i.nombreInstitucion, '(Sin institución)') AS institucion,
+                   COUNT(*) total
             FROM interesusuariocarrera iuc
             JOIN carrerainstitucion ci ON ci.idCarreraInstitucion = iuc.idCarreraInstitucion
             LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN institucion i ON i.idInstitucion = ci.idInstitucion
             {fav_province_join}
             WHERE iuc.fechaAlta BETWEEN %s AND %s {fav_province_filter}
-            GROUP BY ci.idCarreraInstitucion, carrera
+            GROUP BY ci.idCarreraInstitucion
             ORDER BY total DESC
             LIMIT 10
             """,
@@ -6446,12 +6852,101 @@ def institucion_stats_general(current_user_id):
         row_baja = cur.fetchone() or {"total":0}
         total_bajas = row_baja['total'] or 0
 
-        # Ranking favoritas (placeholder vacio, falta FK a interesusuariocarrera)
-        ranking_favoritas = []
-        # Ranking por máxima compatibilidad (no disponible)
-        ranking_max_compatibilidad = []
-        # Promedio de compatibilidades por tipo carrera (no disponible)
-        promedio_por_tipo = []
+        # Ranking favoritas (cantidad de usuarios que le dieron favorito a cada carrera en relacion a todas las carreras (estadisticamente))
+        params_fav = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_fav.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                ci.idCarreraInstitucion,
+                COALESCE(ci.nombreCarrera, c.nombreCarrera, '(Sin nombre)') AS nombreCarrera,
+                COUNT(DISTINCT iuc.idUsuario) AS totalFavoritos,
+                ROUND(COUNT(DISTINCT iuc.idUsuario) * 100.0 / NULLIF((
+                    SELECT COUNT(DISTINCT iuc2.idUsuario) 
+                    FROM interesusuariocarrera iuc2
+                    JOIN carrerainstitucion ci2 ON ci2.idCarreraInstitucion = iuc2.idCarreraInstitucion
+                    WHERE ci2.idInstitucion = %s 
+                    AND iuc2.fechaAlta BETWEEN %s AND %s
+                    AND (iuc2.fechaFin IS NULL OR iuc2.fechaFin > NOW())
+                ), 0), 2) AS porcentajeDelTotal
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN interesusuariocarrera iuc ON iuc.idCarreraInstitucion = ci.idCarreraInstitucion
+                AND iuc.fechaAlta BETWEEN %s AND %s
+                AND (iuc.fechaFin IS NULL OR iuc.fechaFin > NOW())
+            WHERE ci.idInstitucion = %s {tipo_filter_sql}
+            GROUP BY ci.idCarreraInstitucion, ci.nombreCarrera, c.nombreCarrera
+            HAVING totalFavoritos > 0
+            ORDER BY totalFavoritos DESC, nombreCarrera
+            LIMIT 10
+            """,
+            (id_inst, from_dt, to_dt, from_dt, to_dt, id_inst) + (tuple(tipos) if tipos else ())
+        )
+        ranking_favoritas = cur.fetchall() or []
+        
+        # Ranking por máxima compatibilidad de los test (viendo la afinidad de testcarrerainstitucion y haciendo estadistica)
+        params_compat = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_compat.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                ci.idCarreraInstitucion,
+                COALESCE(ci.nombreCarrera, c.nombreCarrera, '(Sin nombre)') AS nombreCarrera,
+                ROUND(AVG(tci.afinidadCarrera), 2) AS promedioCompatibilidad,
+                ROUND(MAX(tci.afinidadCarrera), 2) AS maxCompatibilidad,
+                COUNT(DISTINCT tci.idTest) AS cantidadTests,
+                COUNT(CASE WHEN tci.afinidadCarrera >= 80 THEN 1 END) AS testsAltaCompatibilidad
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN testcarrerainstitucion tci ON tci.idCarreraInstitucion = ci.idCarreraInstitucion
+            LEFT JOIN test t ON t.idTest = tci.idTest
+            WHERE ci.idInstitucion = %s 
+            AND t.fechaTest BETWEEN %s AND %s
+            AND tci.afinidadCarrera IS NOT NULL
+            {tipo_filter_sql}
+            GROUP BY ci.idCarreraInstitucion, ci.nombreCarrera, c.nombreCarrera
+            HAVING cantidadTests > 0
+            ORDER BY promedioCompatibilidad DESC, maxCompatibilidad DESC
+            LIMIT 10
+            """,
+            tuple(params_compat)
+        )
+        ranking_max_compatibilidad = cur.fetchall() or []
+        
+        # Promedio de compatibilidades por tipo carrera valor de compatibilidad con carreras del mismo tipo (pasando por carrera base)
+        params_tipo = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_tipo.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                COALESCE(tc.nombreTipoCarrera, 'Sin Tipo') AS tipoCarrera,
+                tc.idTipoCarrera,
+                ROUND(AVG(tci.afinidadCarrera), 2) AS promedioCompatibilidad,
+                ROUND(MIN(tci.afinidadCarrera), 2) AS minCompatibilidad,
+                ROUND(MAX(tci.afinidadCarrera), 2) AS maxCompatibilidad,
+                COUNT(DISTINCT ci.idCarreraInstitucion) AS cantidadCarreras,
+                COUNT(DISTINCT tci.idTest) AS cantidadTests
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN testcarrerainstitucion tci ON tci.idCarreraInstitucion = ci.idCarreraInstitucion
+            LEFT JOIN test t ON t.idTest = tci.idTest
+            WHERE ci.idInstitucion = %s 
+            AND t.fechaTest BETWEEN %s AND %s
+            AND tci.afinidadCarrera IS NOT NULL
+            {tipo_filter_sql}
+            GROUP BY tc.idTipoCarrera, tc.nombreTipoCarrera
+            HAVING cantidadTests > 0
+            ORDER BY promedioCompatibilidad DESC
+            """,
+            tuple(params_tipo)
+        )
+        promedio_por_tipo = cur.fetchall() or []
 
         empty_all = (total_carreras==0 and total_bajas==0 and len(ranking_favoritas)==0 and len(ranking_max_compatibilidad)==0 and len(promedio_por_tipo)==0)
         if empty_all:
@@ -6482,11 +6977,180 @@ def institucion_stats_general_export(current_user_id):
     fmt = (request.args.get('format') or 'csv').lower()
     if fmt not in ('csv','pdf'):
         return jsonify({"errorCode":"ERR1","message":"Formato inválido"}), 400
-    with app.test_request_context(query_string=request.query_string):
-        data_resp, status = institucion_stats_general(current_user_id)
-    if status != 200:
-        return data_resp, status
-    payload = data_resp.get_json()
+    
+    from_dt, to_dt, tipos = filters
+    
+    # Obtener los datos directamente
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        id_inst = _my_inst_id(conn, current_user_id)
+        if not id_inst:
+            return jsonify({"errorCode":"ERR1","message":"Institución no encontrada."}), 404
+        cur = conn.cursor(dictionary=True)
+
+        params = [id_inst, from_dt, to_dt]
+        tipo_filter_sql = ''
+        if tipos:
+            in_clause = ','.join(['%s']*len(tipos))
+            tipo_filter_sql = f" AND tc.idTipoCarrera IN ({in_clause})"
+            params.extend(tipos)
+        
+        # Carreras cargadas en periodo
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ci.idCarreraInstitucion) total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            WHERE ci.idInstitucion=%s AND ci.fechaInicio BETWEEN %s AND %s {tipo_filter_sql}
+            """,
+            tuple(params)
+        )
+        row_total = cur.fetchone() or {"total":0}
+        total_carreras = row_total['total'] or 0
+
+        # Carreras dadas de baja
+        params_baja = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_baja.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT COUNT(DISTINCT ci.idCarreraInstitucion) total
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            WHERE ci.idInstitucion=%s AND ci.fechaFin IS NOT NULL AND ci.fechaFin BETWEEN %s AND %s {tipo_filter_sql}
+            """,
+            tuple(params_baja)
+        )
+        row_baja = cur.fetchone() or {"total":0}
+        total_bajas = row_baja['total'] or 0
+
+        # Ranking favoritas
+        params_fav = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_fav.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                ci.idCarreraInstitucion,
+                COALESCE(ci.nombreCarrera, c.nombreCarrera, '(Sin nombre)') AS nombreCarrera,
+                COUNT(DISTINCT iuc.idUsuario) AS totalFavoritos,
+                ROUND(COUNT(DISTINCT iuc.idUsuario) * 100.0 / NULLIF((
+                    SELECT COUNT(DISTINCT iuc2.idUsuario) 
+                    FROM interesusuariocarrera iuc2
+                    JOIN carrerainstitucion ci2 ON ci2.idCarreraInstitucion = iuc2.idCarreraInstitucion
+                    WHERE ci2.idInstitucion = %s 
+                    AND iuc2.fechaAlta BETWEEN %s AND %s
+                    AND (iuc2.fechaFin IS NULL OR iuc2.fechaFin > NOW())
+                ), 0), 2) AS porcentajeDelTotal
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN interesusuariocarrera iuc ON iuc.idCarreraInstitucion = ci.idCarreraInstitucion
+                AND iuc.fechaAlta BETWEEN %s AND %s
+                AND (iuc.fechaFin IS NULL OR iuc.fechaFin > NOW())
+            WHERE ci.idInstitucion = %s {tipo_filter_sql}
+            GROUP BY ci.idCarreraInstitucion, ci.nombreCarrera, c.nombreCarrera
+            HAVING totalFavoritos > 0
+            ORDER BY totalFavoritos DESC, nombreCarrera
+            LIMIT 10
+            """,
+            (id_inst, from_dt, to_dt, from_dt, to_dt, id_inst) + (tuple(tipos) if tipos else ())
+        )
+        ranking_favoritas = cur.fetchall() or []
+        
+        # Ranking por máxima compatibilidad
+        params_compat = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_compat.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                ci.idCarreraInstitucion,
+                COALESCE(ci.nombreCarrera, c.nombreCarrera, '(Sin nombre)') AS nombreCarrera,
+                ROUND(AVG(tci.afinidadCarrera), 2) AS promedioCompatibilidad,
+                ROUND(MAX(tci.afinidadCarrera), 2) AS maxCompatibilidad,
+                COUNT(DISTINCT tci.idTest) AS cantidadTests,
+                COUNT(CASE WHEN tci.afinidadCarrera >= 80 THEN 1 END) AS testsAltaCompatibilidad
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN testcarrerainstitucion tci ON tci.idCarreraInstitucion = ci.idCarreraInstitucion
+            LEFT JOIN test t ON t.idTest = tci.idTest
+            WHERE ci.idInstitucion = %s 
+            AND t.fechaTest BETWEEN %s AND %s
+            AND tci.afinidadCarrera IS NOT NULL
+            {tipo_filter_sql}
+            GROUP BY ci.idCarreraInstitucion, ci.nombreCarrera, c.nombreCarrera
+            HAVING cantidadTests > 0
+            ORDER BY promedioCompatibilidad DESC, maxCompatibilidad DESC
+            LIMIT 10
+            """,
+            tuple(params_compat)
+        )
+        ranking_max_compatibilidad = cur.fetchall() or []
+        
+        # Promedio por tipo
+        params_tipo = [id_inst, from_dt, to_dt]
+        if tipos:
+            params_tipo.extend(tipos)
+        cur.execute(
+            f"""
+            SELECT 
+                COALESCE(tc.nombreTipoCarrera, 'Sin Tipo') AS tipoCarrera,
+                tc.idTipoCarrera,
+                ROUND(AVG(tci.afinidadCarrera), 2) AS promedioCompatibilidad,
+                ROUND(MIN(tci.afinidadCarrera), 2) AS minCompatibilidad,
+                ROUND(MAX(tci.afinidadCarrera), 2) AS maxCompatibilidad,
+                COUNT(DISTINCT ci.idCarreraInstitucion) AS cantidadCarreras,
+                COUNT(DISTINCT tci.idTest) AS cantidadTests
+            FROM carrerainstitucion ci
+            LEFT JOIN carrera c ON c.idCarrera = ci.idCarrera
+            LEFT JOIN tipocarrera tc ON tc.idTipoCarrera = c.idTipoCarrera
+            LEFT JOIN testcarrerainstitucion tci ON tci.idCarreraInstitucion = ci.idCarreraInstitucion
+            LEFT JOIN test t ON t.idTest = tci.idTest
+            WHERE ci.idInstitucion = %s 
+            AND t.fechaTest BETWEEN %s AND %s
+            AND tci.afinidadCarrera IS NOT NULL
+            {tipo_filter_sql}
+            GROUP BY tc.idTipoCarrera, tc.nombreTipoCarrera
+            HAVING cantidadTests > 0
+            ORDER BY promedioCompatibilidad DESC
+            """,
+            tuple(params_tipo)
+        )
+        promedio_por_tipo = cur.fetchall() or []
+
+        payload = {
+            "filters": {"from": str(from_dt), "to": str(to_dt), "tiposCarrera": tipos},
+            "totalCarreras": total_carreras,
+            "totalBajas": total_bajas,
+            "rankingFavoritas": ranking_favoritas,
+            "rankingMaxCompatibilidad": ranking_max_compatibilidad,
+            "promedioCompatibilidadPorTipo": promedio_por_tipo
+        }
+    except Exception as e:
+        log(f"US024 general stats export error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode":"ERR1","message":"Error al generar reporte"}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+    
+    # Convertir Decimal a float para serialización JSON
+    def _convert_decimals(obj):
+        if isinstance(obj, dict):
+            return {k: _convert_decimals(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_convert_decimals(item) for item in obj]
+        elif isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return obj
+    
+    payload = _convert_decimals(payload)
+    
     if fmt == 'csv':
         import io, csv as _csv
         buf = io.StringIO()
@@ -6503,10 +7167,205 @@ def institucion_stats_general_export(current_user_id):
         csv_data = buf.getvalue()
         from flask import Response
         return Response(csv_data, mimetype='text/csv', headers={'Content-Disposition':'attachment; filename="stats_institucion_general.csv"'})
-    else:
-        content = "Reporte Institución General (Stub PDF)\n" + json.dumps(payload, ensure_ascii=False, indent=2)
-        from flask import Response
-        return Response(content, mimetype='application/pdf', headers={'Content-Disposition':'attachment; filename="stats_institucion_general.pdf"'})
+    else:  # pdf
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.units import inch
+            from io import BytesIO
+            from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate, Frame
+            
+            class PDFWithHeaderFooter(BaseDocTemplate):
+                def __init__(self, *args, logo_path=None, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.logo_path = logo_path
+                    frame = Frame(
+                        self.leftMargin, self.bottomMargin, self.width, self.height, id='normal'
+                    )
+                    template = PageTemplate(id='all', frames=[frame], onPage=self._add_header_footer)
+                    self.addPageTemplates([template])
+                
+                def _add_header_footer(self, canvas, doc):
+                    canvas.saveState()
+                    page_width, page_height = A4
+                    
+                    # Encabezado: Logo a la izquierda y texto a la derecha
+                    if self.logo_path and os.path.exists(self.logo_path):
+                        canvas.drawImage(self.logo_path, 36, page_height - 70, width=80, height=40, preserveAspectRatio=True)
+                    
+                    canvas.setFont('Helvetica-Bold', 12)
+                    canvas.drawRightString(page_width - 36, page_height - 50, "ORIENTACIÓN VOCACIONAL ONLINE")
+                    
+                    # Línea separadora debajo del encabezado
+                    canvas.setStrokeColor(colors.grey)
+                    canvas.setLineWidth(0.5)
+                    canvas.line(36, page_height - 75, page_width - 36, page_height - 75)
+                    
+                    # Pie de página: Número de página a la derecha
+                    canvas.setFont('Helvetica', 9)
+                    page_num = canvas.getPageNumber()
+                    canvas.drawRightString(page_width - 36, 20, f"Página {page_num}")
+                    canvas.restoreState()
+            
+            buffer = BytesIO()
+            logo_path = os.path.join(os.path.dirname(__file__), 'OVO_logo.png')
+            doc = PDFWithHeaderFooter(
+                buffer,
+                pagesize=A4,
+                leftMargin=36,
+                rightMargin=36,
+                topMargin=90,
+                bottomMargin=50,
+                logo_path=logo_path
+            )
+            doc.title = "Estadísticas Generales de Institución"
+            
+            styles = getSampleStyleSheet()
+            elements = []
+            
+            # Título principal
+            title = Paragraph("Estadísticas Generales de Institución", styles["Heading1"])
+            elements.append(title)
+            elements.append(Spacer(1, 12))
+            
+            # Filtros aplicados
+            filtros_txt = f"Período: {payload['filters']['from']} a {payload['filters']['to']}"
+            if payload['filters'].get('tiposCarrera'):
+                filtros_txt += f" | Tipos de Carrera: {', '.join(map(str, payload['filters']['tiposCarrera']))}"
+            elements.append(Paragraph(filtros_txt, styles["Normal"]))
+            elements.append(Spacer(1, 16))
+            
+            # Métricas Generales
+            elements.append(Paragraph("Métricas Generales", styles["Heading2"]))
+            elements.append(Spacer(1, 8))
+            data_metricas = [
+                ["Métrica", "Valor"],
+                [Paragraph("Total de Carreras", styles["Normal"]), Paragraph(str(payload.get('totalCarreras', 0)), styles["Normal"])],
+                [Paragraph("Total de Bajas", styles["Normal"]), Paragraph(str(payload.get('totalBajas', 0)), styles["Normal"])],
+            ]
+            table_metricas = Table(data_metricas, colWidths=[4*inch, 2*inch])
+            table_metricas.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(table_metricas)
+            elements.append(Spacer(1, 16))
+            
+            # Ranking de Favoritas
+            if payload.get('rankingFavoritas'):
+                elements.append(Paragraph("Ranking de Carreras Favoritas", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_favoritas = [["Carrera", "Total Favoritos", "% del Total"]]
+                for row in payload['rankingFavoritas']:
+                    data_favoritas.append([
+                        Paragraph(str(row.get('nombreCarrera', '')), styles["Normal"]),
+                        Paragraph(str(row.get('totalFavoritos', 0)), styles["Normal"]),
+                        Paragraph(f"{row.get('porcentajeDelTotal', 0)}%", styles["Normal"])
+                    ])
+                table_favoritas = Table(data_favoritas, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+                table_favoritas.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_favoritas)
+                elements.append(Spacer(1, 16))
+            
+            # Ranking por Máxima Compatibilidad
+            if payload.get('rankingMaxCompatibilidad'):
+                elements.append(Paragraph("Ranking por Compatibilidad", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_compat = [["Carrera", "Promedio", "Máxima", "Tests"]]
+                for row in payload['rankingMaxCompatibilidad']:
+                    data_compat.append([
+                        Paragraph(str(row.get('nombreCarrera', '')), styles["Normal"]),
+                        Paragraph(str(row.get('promedioCompatibilidad', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('maxCompatibilidad', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('cantidadTests', 0)), styles["Normal"])
+                    ])
+                table_compat = Table(data_compat, colWidths=[2.5*inch, 1.5*inch, 1.5*inch, 1*inch])
+                table_compat.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(table_compat)
+                elements.append(Spacer(1, 16))
+            
+            # Promedio de Compatibilidad por Tipo
+            if payload.get('promedioCompatibilidadPorTipo'):
+                elements.append(Paragraph("Promedio de Compatibilidad por Tipo", styles["Heading2"]))
+                elements.append(Spacer(1, 8))
+                data_tipo = [["Tipo de Carrera", "Promedio", "Mínima", "Máxima", "Carreras", "Tests"]]
+                for row in payload['promedioCompatibilidadPorTipo']:
+                    data_tipo.append([
+                        Paragraph(str(row.get('tipoCarrera', '')), styles["Normal"]),
+                        Paragraph(str(row.get('promedioCompatibilidad', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('minCompatibilidad', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('maxCompatibilidad', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('cantidadCarreras', 0)), styles["Normal"]),
+                        Paragraph(str(row.get('cantidadTests', 0)), styles["Normal"])
+                    ])
+                table_tipo = Table(data_tipo, colWidths=[1.8*inch, 1*inch, 1*inch, 1*inch, 0.8*inch, 0.8*inch])
+                table_tipo.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fafafa')]),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 8),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                elements.append(table_tipo)
+            
+            # Construir el PDF
+            doc.build(elements)
+            
+            pdf = buffer.getvalue()
+            buffer.close()
+            
+            from flask import Response
+            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"estadisticas_institucion_general_{ts}.pdf"
+            return Response(
+                pdf,
+                mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+            )
+        except Exception as e:
+            log(f"US024 general stats export PDF error: {e}\n{traceback.format_exc()}")
+            return jsonify({"errorCode":"ERR3","message":"Ocurrió un error al generar el PDF. Intente nuevamente."}), 500
 
 # Estadísticas por carrera
 def _parse_inst_carrera_filters():
@@ -7374,6 +8233,148 @@ def admin_institution_deactivate(current_user_id, id_institucion):
 # Curl ejemplo:
 # curl -X POST {{baseURL}}/api/v1/admin/institutions/5/deactivate -H "Authorization: Bearer {{token}}"
 
+# Endpoint para volver a activar la institución
+@app.route('/api/v1/admin/institutions/<int:id_institucion>/activate', methods=['POST'])
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
+def admin_institution_activate(current_user_id, id_institucion):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Verificar si la institución existe
+        cur.execute("""
+            SELECT idInstitucion FROM institucion WHERE idInstitucion = %s
+        """, (id_institucion,))
+        institucion = cur.fetchone()
+        if not institucion:
+            return jsonify({'errorCode':'ERR3','message':'La institución no existe.'}), 404
+
+        # Verificar si la institución está dada de baja (estado 'Baja')
+        cur.execute("""
+            SELECT ie.idinstitucionEstado, ei.nombreEstadoInstitucion
+            FROM institucionestado ie
+            JOIN estadoinstitucion ei ON ie.idEstadoInstitucion = ei.idEstadoInstitucion
+            WHERE ie.idInstitucion = %s AND (ie.fechaFin IS NULL OR ie.fechaFin > NOW())
+            ORDER BY ie.fechaInicio DESC
+            LIMIT 1
+        """, (id_institucion,))
+        estado_actual = cur.fetchone()
+        
+        if not estado_actual or estado_actual['nombreEstadoInstitucion'] != 'Baja':
+            return jsonify({'errorCode':'ERR3','message':'La institución no está dada de baja o ya está activa.'}), 400
+
+        # Obtener el id del estado 'Aprobada' o 'Activa'
+        cur.execute("SELECT idEstadoInstitucion FROM estadoinstitucion WHERE nombreEstadoInstitucion='Aprobada' LIMIT 1")
+        estado_aprobada = cur.fetchone()
+        if not estado_aprobada:
+            return jsonify({'errorCode':'ERR3','message':'No se encontró el estado Aprobada en el sistema.'}), 500
+
+        # Cerrar el estado actual de 'Baja' y crear nuevo estado 'Aprobada'
+        cur.execute("""
+            UPDATE institucionestado 
+            SET fechaFin = NOW() 
+            WHERE idInstitucion = %s AND fechaFin IS NULL
+        """, (id_institucion,))
+
+        cur.execute("""
+            INSERT INTO institucionestado (idInstitucion, idEstadoInstitucion, fechaInicio)
+            VALUES (%s, %s, NOW())
+        """, (id_institucion, estado_aprobada['idEstadoInstitucion']))
+
+        conn.commit()
+        return jsonify({'ok': True, 'message': 'Institución reactivada correctamente.'}), 200
+    except Exception as e:
+        log(f"US028 activate institution error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR3','message':'No se pudo reactivar la institución. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+# curl ejemplo:
+# curl -X POST {{baseURL}}/api/v1/admin/institutions/5/activate -H "Authorization: Bearer {{token}}"
+
+# -- Volcando estructura para tabla ovo.estadoinstitucion
+# CREATE TABLE IF NOT EXISTS `estadoinstitucion` (
+#   `idEstadoInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+#   `nombreEstadoInstitucion` varchar(50) DEFAULT NULL,
+#   `fechaFin` datetime DEFAULT NULL,
+#   PRIMARY KEY (`idEstadoInstitucion`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.institucion
+# CREATE TABLE IF NOT EXISTS `institucion` (
+#   `idInstitucion` int(11) NOT NULL AUTO_INCREMENT,
+#   `idTipoInstitucion` int(11) NOT NULL,
+#   `idLocalidad` int(11) DEFAULT NULL,
+#   `idUsuario` int(11) DEFAULT NULL,
+#   `anioFundacion` int(11) NOT NULL,
+#   `codigoPostal` int(11) NOT NULL,
+#   `nombreInstitucion` varchar(50) NOT NULL,
+#   `CUIT` bigint(20) NOT NULL DEFAULT 0,
+#   `direccion` varchar(50) NOT NULL,
+#   `fechaAlta` datetime NOT NULL DEFAULT current_timestamp(),
+#   `siglaInstitucion` varchar(50) NOT NULL,
+#   `telefono` varchar(50) NOT NULL,
+#   `mail` varchar(50) NOT NULL,
+#   `sitioWeb` text NOT NULL,
+#   `urlLogo` text NOT NULL,
+#   PRIMARY KEY (`idInstitucion`),
+#   KEY `FK_institucion_tipoinstitucion` (`idTipoInstitucion`),
+#   KEY `FK_institucion_localidad` (`idLocalidad`),
+#   KEY `FK_institucion_usuario` (`idUsuario`),
+#   CONSTRAINT `FK_institucion_localidad` FOREIGN KEY (`idLocalidad`) REFERENCES `localidad` (`idLocalidad`) ON DELETE SET NULL ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucion_tipoinstitucion` FOREIGN KEY (`idTipoInstitucion`) REFERENCES `tipoinstitucion` (`idTipoInstitucion`) ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucion_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# -- Volcando estructura para tabla ovo.institucionestado
+# CREATE TABLE IF NOT EXISTS `institucionestado` (
+#   `idinstitucionEstado` int(11) NOT NULL AUTO_INCREMENT,
+#   `idEstadoInstitucion` int(11) NOT NULL,
+#   `idInstitucion` int(11) NOT NULL,
+#   `fechaInicio` datetime NOT NULL DEFAULT current_timestamp(),
+#   `fechaFin` datetime DEFAULT NULL,
+#   `justificacion` text DEFAULT NULL,
+#   PRIMARY KEY (`idinstitucionEstado`),
+#   KEY `FK_institucionestado_estadoinstitucion` (`idEstadoInstitucion`),
+#   KEY `FK_institucionestado_institucion` (`idInstitucion`),
+#   CONSTRAINT `FK_institucionestado_estadoinstitucion` FOREIGN KEY (`idEstadoInstitucion`) REFERENCES `estadoinstitucion` (`idEstadoInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE,
+#   CONSTRAINT `FK_institucionestado_institucion` FOREIGN KEY (`idInstitucion`) REFERENCES `institucion` (`idInstitucion`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+# Endpoint para ver el historial de estados de una institcion:
+@app.route('/api/v1/admin/institutions/<int:institution_id>/history', methods=['GET'])
+@requires_permission('MANAGE_INSTITUTION_REQUESTS')
+def admin_institution_history(current_user_id, institution_id):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT ie.idinstitucionEstado, ie.fechaInicio, ie.fechaFin, ie.justificacion, ei.nombreEstadoInstitucion
+            FROM institucionestado ie
+            JOIN estadoinstitucion ei ON ie.idEstadoInstitucion = ei.idEstadoInstitucion
+            WHERE ie.idInstitucion = %s
+            ORDER BY ie.fechaInicio DESC
+        """, (institution_id,))
+        rows = cur.fetchall() or []
+        for row in rows:
+            if row['fechaInicio']:
+                row['fechaInicio'] = row['fechaInicio'].strftime('%Y-%m-%d %H:%M:%S')
+            if row['fechaFin']:
+                row['fechaFin'] = row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S')
+        return jsonify({'history': rows}), 200
+    except Exception as e:
+        log(f"US029 institution history error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR2','message':'No se pudo listar el historial de estados.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+# Curl ejemplo:
+# curl -X GET {{baseURL}}/api/v1/admin/institutions/5/history -H "Authorization: Bearer {{token}}"
+
 # ============================ ABM Carrera Catálogo (US029) ============================
 # Catálogo base: tabla carrera (idCarrera, nombreCarrera, idTipoCarrera, fechaFin)
 # Endpoints (prefijo admin):
@@ -7434,6 +8435,10 @@ def admin_catalog_career_create(current_user_id):
         cur.execute("INSERT INTO carrera (nombreCarrera, idTipoCarrera) VALUES (%s,%s)", (nombre, tipo))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de carrera idCarrera={new_id}, nombre={nombre}, idTipoCarrera={tipo}")
+        
         return jsonify({'ok':True,'idCarrera': new_id}), 201
     except Exception as e:
         log(f"US029 create career error: {e}\n{traceback.format_exc()}")
@@ -7515,6 +8520,10 @@ def admin_catalog_career_update(current_user_id, id_carrera):
                        (nombre, tipo, id_carrera))
         
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de carrera catálogo idCarrera={id_carrera}, nombre={nombre}, idTipoCarrera={tipo}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US029 update career error: {e}\n{traceback.format_exc()}")
@@ -7538,6 +8547,10 @@ def admin_catalog_career_delete(current_user_id, id_carrera):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la carrera. Intente nuevamente.'}), 404
         cur.execute("UPDATE carrera SET fechaFin=NOW() WHERE idCarrera=%s", (id_carrera,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de carrera catálogo idCarrera={id_carrera}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US029 delete career error: {e}\n{traceback.format_exc()}")
@@ -7570,8 +8583,8 @@ def _tipo_carrera_exists_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-types', methods=['GET'])
-@requires_permission('MANAGE_CAREERS_TYPES')
-def admin_career_types_list(current_user_id):
+# @requires_permission('MANAGE_CAREERS_TYPES')
+def admin_career_types_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -7607,6 +8620,10 @@ def admin_career_type_create(current_user_id):
         cur.execute("INSERT INTO tipocarrera (nombreTipoCarrera) VALUES (%s)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de tipo de carrera idTipoCarrera={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idTipoCarrera': new_id}), 201
     except Exception as e:
         log(f"US030 create tipoCarrera error: {e}\n{traceback.format_exc()}")
@@ -7664,6 +8681,10 @@ def admin_career_type_update(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de carrera.'}), 400
         cur.execute("UPDATE tipocarrera SET nombreTipoCarrera=%s, fechaFin=%s WHERE idTipoCarrera=%s", (nombre, fecha_fin_validated, id_tipo))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de tipo de carrera idTipoCarrera={id_tipo}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US030 update tipoCarrera error: {e}\n{traceback.format_exc()}")
@@ -7687,6 +8708,10 @@ def admin_career_type_delete(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de carrera. Intente nuevamente.'}), 404
         cur.execute("UPDATE tipocarrera SET fechaFin=NOW() WHERE idTipoCarrera=%s AND fechaFin IS NULL", (id_tipo,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de tipo de carrera idTipoCarrera={id_tipo}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US030 delete tipoCarrera error: {e}\n{traceback.format_exc()}")
@@ -7751,6 +8776,10 @@ def admin_country_create(current_user_id):
         cur.execute("INSERT INTO pais (nombrePais) VALUES (%s)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de país idPais={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idPais': new_id}), 201
     except Exception as e:
         log(f"US031 create pais error: {e}\n{traceback.format_exc()}")
@@ -7798,6 +8827,10 @@ def admin_country_update(current_user_id, id_pais):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el país.'}), 400
         cur.execute("UPDATE pais SET nombrePais=%s WHERE idPais=%s", (nombre, id_pais))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de país idPais={id_pais}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US031 update pais error: {e}\n{traceback.format_exc()}")
@@ -7819,6 +8852,10 @@ def admin_country_delete(current_user_id, id_pais):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el país. Intente nuevamente.'}), 404
         cur.execute("DELETE FROM pais WHERE idPais=%s", (id_pais,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de país idPais={id_pais}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US031 delete pais error: {e}\n{traceback.format_exc()}")
@@ -7900,6 +8937,10 @@ def admin_province_create(current_user_id):
         cur.execute("INSERT INTO provincia (nombreProvincia, idPais) VALUES (%s,%s)", (nombre, id_pais))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de provincia idProvincia={new_id}, nombre={nombre}, idPais={id_pais}")
+        
         return jsonify({'ok':True,'idProvincia': new_id}), 201
     except Exception as e:
         log(f"US032 create provincia error: {e}\n{traceback.format_exc()}")
@@ -7952,6 +8993,10 @@ def admin_province_update(current_user_id, id_provincia):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar un país.'}), 400
         cur.execute("UPDATE provincia SET nombreProvincia=%s, idPais=%s WHERE idProvincia=%s", (nombre, id_pais, id_provincia))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de provincia idProvincia={id_provincia}, nombre={nombre}, idPais={id_pais}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US032 update provincia error: {e}\n{traceback.format_exc()}")
@@ -7973,6 +9018,10 @@ def admin_province_delete(current_user_id, id_provincia):
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la provincia. Intente nuevamente.'}), 404
         cur.execute("DELETE FROM provincia WHERE idProvincia=%s", (id_provincia,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de provincia idProvincia={id_provincia}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US032 delete provincia error: {e}\n{traceback.format_exc()}")
@@ -8047,6 +9096,10 @@ def admin_locality_create(current_user_id):
         cur.execute("INSERT INTO localidad (nombreLocalidad, idProvincia) VALUES (%s,%s)", (nombre, id_provincia))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de localidad idLocalidad={new_id}, nombre={nombre}, idProvincia={id_provincia}")
+        
         return jsonify({'ok':True,'idLocalidad': new_id}), 201
     except Exception as e:
         log(f"US033 create localidad error: {e}\n{traceback.format_exc()}")
@@ -8099,6 +9152,10 @@ def admin_locality_update(current_user_id, id_localidad):
             return jsonify({'errorCode':'ERR2','message':'Debe seleccionar una provincia asociada.'}), 400
         cur.execute("UPDATE localidad SET nombreLocalidad=%s, idProvincia=%s WHERE idLocalidad=%s", (nombre, id_provincia, id_localidad))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de localidad idLocalidad={id_localidad}, nombre={nombre}, idProvincia={id_provincia}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US033 update localidad error: {e}\n{traceback.format_exc()}")
@@ -8120,6 +9177,10 @@ def admin_locality_delete(current_user_id, id_localidad):
             return jsonify({'errorCode':'ERR3','message':'No se pudo eliminar la localidad. Intente nuevamente.'}), 404
         cur.execute("DELETE FROM localidad WHERE idLocalidad=%s", (id_localidad,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de localidad idLocalidad={id_localidad}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US033 delete localidad error: {e}\n{traceback.format_exc()}")
@@ -8183,6 +9244,10 @@ def admin_gender_create(current_user_id):
         cur.execute("INSERT INTO genero (nombreGenero) VALUES (%s)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de género idGenero={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idGenero': new_id}), 201
     except Exception as e:
         log(f"US034 create genero error: {e}\n{traceback.format_exc()}")
@@ -8230,6 +9295,10 @@ def admin_gender_update(current_user_id, id_genero):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el género.'}), 400
         cur.execute("UPDATE genero SET nombreGenero=%s WHERE idGenero=%s", (nombre, id_genero))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de género idGenero={id_genero}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US034 update genero error: {e}\n{traceback.format_exc()}")
@@ -8251,6 +9320,10 @@ def admin_gender_delete(current_user_id, id_genero):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el género. Intente nuevamente.'}), 404
         cur.execute("DELETE FROM genero WHERE idGenero=%s", (id_genero,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de género idGenero={id_genero}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US034 delete genero error: {e}\n{traceback.format_exc()}")
@@ -8308,6 +9381,10 @@ def admin_user_status_create(current_user_id):
         cur.execute("INSERT INTO estadousuario (nombreEstadoUsuario, fechaFin) VALUES (%s, NULL)", (nombre,))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de estado de usuario idEstadoUsuario={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idEstadoUsuario': new_id}), 201
     except Exception as e:
         log(f"US035 create estadoUsuario error: {e}\n{traceback.format_exc()}")
@@ -8386,6 +9463,10 @@ def admin_user_status_delete(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado. Intente nuevamente.'}), 404
         cur.execute("UPDATE estadousuario SET fechaFin=NOW() WHERE idEstadoUsuario=%s AND fechaFin IS NULL", (id_estado,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de estado de usuario idEstadoUsuario={id_estado}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US035 delete estadoUsuario error: {e}\n{traceback.format_exc()}")
@@ -8431,7 +9512,7 @@ def _permiso_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/permissions', methods=['GET'])
-@requires_permission('MANAGE_PERMISSIONS')
+@requires_permission(['MANAGE_PERMISSIONS','ASIGN_PERM'])
 def admin_permissions_list(current_user_id):
     conn=None
     try:
@@ -8465,6 +9546,10 @@ def admin_permission_create(current_user_id):
         cur.execute("INSERT INTO permiso (nombrePermiso, descripcion, fechaFin) VALUES (%s,%s,NULL)", (nombre, descripcion))
         conn.commit()
         new_id = cur.lastrowid
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de permiso idPermiso={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idPermiso': new_id}), 201
     except Exception as e:
         log(f"US036 create permiso error: {e}\n{traceback.format_exc()}")
@@ -8513,6 +9598,10 @@ def admin_permission_update(current_user_id, id_permiso):
             return jsonify({'errorCode':'ERR1','message':'El nombre del permiso esta duplicado.'}), 400
         cur.execute("UPDATE permiso SET nombrePermiso=%s, descripcion=%s WHERE idPermiso=%s", (nombre, descripcion, id_permiso))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de permiso idPermiso={id_permiso}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US036 update permiso error: {e}\n{traceback.format_exc()}")
@@ -8534,6 +9623,10 @@ def admin_permission_delete(current_user_id, id_permiso):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el permiso. Intente nuevamente.'}), 404
         cur.execute("UPDATE permiso SET fechaFin=NOW() WHERE idPermiso=%s AND fechaFin IS NULL", (id_permiso,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de permiso idPermiso={id_permiso}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US036 delete permiso error: {e}\n{traceback.format_exc()}")
@@ -8628,6 +9721,11 @@ def admin_group_create(current_user_id):
                 except Exception:
                     pass
         conn.commit()
+        
+        # Registrar en auditoría
+        permisos_str = ','.join(map(str, permisos)) if permisos else 'ninguno'
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de grupo idGrupo={new_id}, nombre={nombre}, permisos=[{permisos_str}]")
+        
         return jsonify({'ok':True,'idGrupo': new_id}), 201
     except Exception as e:
         log(f"US037 create grupo error: {e}\n{traceback.format_exc()}")
@@ -8702,6 +9800,10 @@ def admin_group_update(current_user_id, id_grupo):
             except Exception:
                 pass
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de grupo idGrupo={id_grupo}, nombre={nombre}, permisos agregados={len(a_agregar)}, permisos eliminados={len(a_cerrar)}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US037 update grupo error: {e}\n{traceback.format_exc()}")
@@ -8725,6 +9827,10 @@ def admin_group_delete(current_user_id, id_grupo):
         # Cerrar permisos activos asociados
         cur.execute("UPDATE permisogrupo SET fechaFin=NOW() WHERE idGrupo=%s AND fechaFin IS NULL", (id_grupo,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de grupo idGrupo={id_grupo} y sus permisos asociados")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US037 delete grupo error: {e}\n{traceback.format_exc()}")
@@ -8793,6 +9899,10 @@ def admin_institution_type_create(current_user_id):
         cur.execute("INSERT INTO tipoinstitucion (nombreTipoInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de tipo de institución idTipoInstitucion={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idTipoInstitucion': new_id}), 201
     except Exception as e:
         log(f"US038 create tipoInstitucion error: {e}\n{traceback.format_exc()}")
@@ -8850,6 +9960,10 @@ def admin_institution_type_update(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de institución.'}), 400
         cur.execute("UPDATE tipoinstitucion SET nombreTipoInstitucion=%s, fechaFin=%s WHERE idTipoInstitucion=%s", (nombre, fecha_fin_validated, id_tipo))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de tipo de institución idTipoInstitucion={id_tipo}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US038 update tipoInstitucion error: {e}\n{traceback.format_exc()}")
@@ -8871,6 +9985,10 @@ def admin_institution_type_delete(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el tipo de institución. Intente nuevamente.'}), 404
         cur.execute("UPDATE tipoinstitucion SET fechaFin=NOW() WHERE idTipoInstitucion=%s", (id_tipo,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de tipo de institución idTipoInstitucion={id_tipo}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US038 delete tipoInstitucion error: {e}\n{traceback.format_exc()}")
@@ -8914,17 +10032,13 @@ def _modalidad_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/career-modalities', methods=['GET'])
-@requires_permission(['MANAGE_CAREER_MODALITIES', 'INSTITUTION_MANAGE_CAREERS'])
-def admin_career_modalities_list(current_user_id):
+# @requires_permission(['MANAGE_CAREER_MODALITIES', 'INSTITUTION_MANAGE_CAREERS'])
+def admin_career_modalities_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
-        try:
-            cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad FROM modalidadcarrerainstitucion ORDER BY nombreModalidad")
-        except mysql.connector.Error:
-            # Sin fechaFin
-            cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad FROM modalidadcarrerainstitucion ORDER BY nombreModalidad")
+        cur.execute("SELECT idModalidadCarreraInstitucion, nombreModalidad FROM modalidadcarrerainstitucion ORDER BY nombreModalidad")
         rows = cur.fetchall() or []
         return jsonify({'careerModalities': rows}), 200
     except Exception as e:
@@ -8955,6 +10069,10 @@ def admin_career_modality_create(current_user_id):
             cur.execute("INSERT INTO modalidadcarrerainstitucion (nombreModalidad) VALUES (%s)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de modalidad carrera institución idModalidadCarreraInstitucion={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idModalidadCarreraInstitucion': new_id}), 201
     except Exception as e:
         log(f"US039 create modalidad error: {e}\n{traceback.format_exc()}")
@@ -9012,6 +10130,10 @@ def admin_career_modality_update(current_user_id, id_mod):
         except mysql.connector.Error:
             cur.execute("UPDATE modalidadcarrerainstitucion SET nombreModalidad=%s WHERE idModalidadCarreraInstitucion=%s", (nombre, id_mod))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de modalidad carrera institución idModalidadCarreraInstitucion={id_mod}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US039 update modalidad error: {e}\n{traceback.format_exc()}")
@@ -9042,6 +10164,10 @@ def admin_career_modality_delete(current_user_id, id_mod):
             # Columna fechaFin inexistente -> borrar físico
             cur.execute("DELETE FROM modalidadcarrerainstitucion WHERE idModalidadCarreraInstitucion=%s", (id_mod,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de modalidad carrera institución idModalidadCarreraInstitucion={id_mod}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US039 delete modalidad error: {e}\n{traceback.format_exc()}")
@@ -9181,6 +10307,10 @@ def admin_aptitud_create(current_user_id):
         cur.execute("INSERT INTO aptitud (nombreAptitud, descripcion, fechaAlta, fechaBaja) VALUES (%s,%s,NOW(),NULL)", (nombre, descripcion))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de aptitud idAptitud={new_id}, nombre={nombre}")
+        
         enviar_datos_aws()
         return jsonify({'ok':True,'idAptitud': new_id}), 201
     except Exception as e:
@@ -9240,6 +10370,10 @@ def admin_aptitud_update(current_user_id, id_aptitud):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para la aptitud.'}), 400
         cur.execute("UPDATE aptitud SET nombreAptitud=%s, descripcion=%s, fechaBaja=%s WHERE idAptitud=%s", (nombre, descripcion, fecha_fin_validated, id_aptitud))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de aptitud idAptitud={id_aptitud}, nombre={nombre}")
+        
         enviar_datos_aws()
         return jsonify({'ok':True}), 200
     except Exception as e:
@@ -9263,6 +10397,10 @@ def admin_aptitud_delete(current_user_id, id_aptitud):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar la aptitud. Intente nuevamente.'}), 404
         cur.execute("UPDATE aptitud SET fechaBaja=NOW() WHERE idAptitud=%s AND fechaBaja IS NULL", (aptitud['idAptitud'],))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de aptitud idAptitud={id_aptitud}, nombre={aptitud['nombreAptitud']}")
+        
         # Enviar eliminación a AWS
         eliminar_datos_aws([aptitud['nombreAptitud']])
         return jsonify({'ok':True}), 200
@@ -9329,6 +10467,10 @@ def admin_access_status_create(current_user_id):
         cur.execute("INSERT INTO estadoacceso (nombreEstadoAcceso, fechaFin) VALUES (%s, NULL)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de estado de acceso idEstadoAcceso={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idEstadoAcceso': new_id}), 201
     except Exception as e:
         log(f"US041 create estadoacceso error: {e}\n{traceback.format_exc()}")
@@ -9376,6 +10518,10 @@ def admin_access_status_update(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado.'}), 400
         cur.execute("UPDATE estadoacceso SET nombreEstadoAcceso=%s WHERE idEstadoAcceso=%s", (nombre, id_estado))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de estado de acceso idEstadoAcceso={id_estado}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US041 update estadoacceso error: {e}\n{traceback.format_exc()}")
@@ -9397,6 +10543,10 @@ def admin_access_status_delete(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de acceso. Intente nuevamente.'}), 404
         cur.execute("UPDATE estadoacceso SET fechaFin=NOW() WHERE idEstadoAcceso=%s AND fechaFin IS NULL", (id_estado,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de estado de acceso idEstadoAcceso={id_estado}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US041 delete estadoacceso error: {e}\n{traceback.format_exc()}")
@@ -9430,8 +10580,8 @@ def _tipo_accion_duplicate_active(cur, nombre, exclude_id=None):
     return cur.fetchone() is not None
 
 @app.route('/api/v1/admin/catalog/action-types', methods=['GET'])
-@requires_permission('MANAGE_ACCION_TYPES')
-def admin_action_types_list(current_user_id):
+# @requires_permission('MANAGE_ACCION_TYPES')
+def admin_action_types_list():
     conn=None
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
@@ -9463,6 +10613,10 @@ def admin_action_type_create(current_user_id):
         cur.execute("INSERT INTO tipoaccion (nombreTipoAccion) VALUES (%s)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de tipo de acción idTipoAccion={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idTipoAccion': new_id}), 201
     except Exception as e:
         log(f"US042 create tipoaccion error: {e}\n{traceback.format_exc()}")
@@ -9510,6 +10664,10 @@ def admin_action_type_update(current_user_id, id_tipo):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el tipo de acción.'}), 400
         cur.execute("UPDATE tipoaccion SET nombreTipoAccion=%s WHERE idTipoAccion=%s", (nombre, id_tipo))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de tipo de acción idTipoAccion={id_tipo}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US042 update tipoaccion error: {e}\n{traceback.format_exc()}")
@@ -9536,6 +10694,10 @@ def admin_action_type_delete(current_user_id, id_tipo):
         except mysql.connector.Error:
             cur.execute("DELETE FROM tipoaccion WHERE idTipoAccion=%s", (id_tipo,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de tipo de acción idTipoAccion={id_tipo}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US042 delete tipoaccion error: {e}\n{traceback.format_exc()}")
@@ -9603,6 +10765,10 @@ def admin_institution_state_create(current_user_id):
         cur.execute("INSERT INTO estadoinstitucion (nombreEstadoInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de estado de institución idEstadoInstitucion={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idEstadoInstitucion': new_id}), 201
     except Exception as e:
         log(f"US043 create estadoinstitucion error: {e}\n{traceback.format_exc()}")
@@ -9660,6 +10826,10 @@ def admin_institution_state_update(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de la institución.'}), 400
         cur.execute("UPDATE estadoinstitucion SET nombreEstadoInstitucion=%s, fechaFin=%s WHERE idEstadoInstitucion=%s", (nombre, fecha_fin_validated, id_estado))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de estado de institución idEstadoInstitucion={id_estado}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US043 update estadoinstitucion error: {e}\n{traceback.format_exc()}")
@@ -9681,6 +10851,10 @@ def admin_institution_state_delete(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de institución. Intente nuevamente.'}), 404
         cur.execute("UPDATE estadoinstitucion SET fechaFin=NOW() WHERE idEstadoInstitucion=%s AND fechaFin IS NULL", (id_estado,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de estado de institución idEstadoInstitucion={id_estado}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US043 delete estadoinstitucion error: {e}\n{traceback.format_exc()}")
@@ -9749,6 +10923,10 @@ def admin_career_institution_status_create(current_user_id):
         cur.execute("INSERT INTO estadocarrerainstitucion (nombreEstadoCarreraInstitucion, fechaFin) VALUES (%s, NULL)", (nombre,))
         new_id = cur.lastrowid
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Creación de estado de carrera institución idEstadoCarreraInstitucion={new_id}, nombre={nombre}")
+        
         return jsonify({'ok':True,'idEstadoCarreraInstitucion': new_id}), 201
     except Exception as e:
         log(f"US044 create estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
@@ -9806,6 +10984,10 @@ def admin_career_institution_status_update(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR1','message':'Debe ingresar un nombre para el estado de carrera.'}), 400
         cur.execute("UPDATE estadocarrerainstitucion SET nombreEstadoCarreraInstitucion=%s, fechaFin=%s WHERE idEstadoCarreraInstitucion=%s", (nombre, fecha_fin_validated, id_estado))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "MODIFICACION", f"Modificación de estado de carrera institución idEstadoCarreraInstitucion={id_estado}, nombre={nombre}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US044 update estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
@@ -9829,6 +11011,10 @@ def admin_career_institution_status_delete(current_user_id, id_estado):
             return jsonify({'errorCode':'ERR2','message':'No se pudo eliminar el estado de carrera. Intente nuevamente.'}), 404
         cur.execute("UPDATE estadocarrerainstitucion SET fechaFin=NOW() WHERE idEstadoCarreraInstitucion=%s AND fechaFin IS NULL", (id_estado,))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de estado de carrera institución idEstadoCarreraInstitucion={id_estado}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US044 delete estadocarrerainstitucion error: {e}\n{traceback.format_exc()}")
@@ -10025,10 +11211,19 @@ def _user_email_exists(cur, email):
     return cur.fetchone() is not None
 
 def _insert_user_state(cur, user_id, id_estado_nuevo):
+    # Verificar el estado actual del usuario
+    cur.execute("SELECT idEstadoUsuario FROM usuarioestado WHERE idUsuario=%s AND fechaFin IS NULL", (user_id,))
+    row = cur.fetchone()
+    
+    # Si el usuario ya tiene ese estado activo, no hacer nada
+    if row and row[0] == id_estado_nuevo:
+        return False  # No se realizó cambio
+    
     # Cerrar estado previo
     cur.execute("UPDATE usuarioestado SET fechaFin=NOW() WHERE idUsuario=%s AND fechaFin IS NULL", (user_id,))
     # Abrir nuevo
     cur.execute("INSERT INTO usuarioestado (idUsuario, idEstadoUsuario, fechaInicio, fechaFin) VALUES (%s,%s,NOW(),NULL)", (user_id, id_estado_nuevo))
+    return True  # Se realizó el cambio
 
 def _determine_initial_state(value:str):
     v = (value or '').strip().lower()
@@ -10202,7 +11397,7 @@ def admin_user_update(current_user_id, user_id):
         for gid in grupos:
             cur.execute("INSERT INTO usuariogrupo (idUsuario, idGrupo, fechaInicio, fechaFin) VALUES (%s, %s, NOW(), NULL)",
                         (user_id, gid))
-        # Actualizar estado actualizando la fecha fin y creando nuevo registro
+        # Actualizar estado actualizando la fecha fin y creando nuevo registro (solo si cambió)
         _insert_user_state(cur, user_id, idEstado)
         conn.commit()
         return jsonify({'ok':True}), 200
@@ -10216,6 +11411,42 @@ def admin_user_update(current_user_id, user_id):
 # Curl de ejemplo para este endpoint:
 # curl -X PUT "{{baseURL}}/api/v1/admin/catalog/users/1" -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d "{\"nombre\":\"Juan\",\"apellido\":\"Perez\",\"email\":\"juan.perez@example.com\",\"grupos\":[1,2],\"idEstado\":1}"
 
+# Endpoint para ver el historial de estados de un usuario en concreto
+@app.route('/api/v1/admin/catalog/users/<int:user_id>/states', methods=['GET'])
+@requires_permission('MANAGE_USERS')
+def admin_user_states_get(current_user_id, user_id):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Obtener historial de estados del usuario
+        cur.execute("""
+            SELECT ue.idEstadoUsuario, eu.nombreEstadoUsuario, ue.fechaInicio, ue.fechaFin
+            FROM usuarioestado ue
+            JOIN estadousuario eu ON eu.idEstadoUsuario = ue.idEstadoUsuario
+            WHERE ue.idUsuario = %s
+            ORDER BY ue.fechaInicio DESC
+        """, (user_id,))
+        rows = cur.fetchall()
+        # Formatear resultado
+        states = []
+        for row in rows:
+            states.append({
+                'idEstadoUsuario': row['idEstadoUsuario'],
+                'nombreEstadoUsuario': row['nombreEstadoUsuario'],
+                'fechaInicio': row['fechaInicio'].strftime('%Y-%m-%d %H:%M:%S') if row['fechaInicio'] else None,
+                'fechaFin': row['fechaFin'].strftime('%Y-%m-%d %H:%M:%S') if row['fechaFin'] else None
+            })
+        return jsonify(states), 200
+    except Exception as e:
+        log(f"US046 get user states error: {e}\n{traceback.format_exc()}")
+        return jsonify({'errorCode':'ERR4','message':'No se pudo obtener el historial de estados. Intente nuevamente.'}), 500
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception: pass
+# curl ejemplo para este endpoint:
+# curl -X GET "{{baseURL}}/api/v1/admin/catalog/users/1/states" -H "Authorization: Bearer {{token}}"
 
 # ============================= Gestion de permisos de grupo (US047)  ============================
 # Objetivo: Asignar y remover permisos a grupos.
@@ -10240,6 +11471,10 @@ def admin_group_permission_add(current_user_id, grupo_id, perm_id):
         # Asignar permiso al grupo
         cur.execute("INSERT INTO grupopermiso (idGrupo, idPermiso, fechaInicio) VALUES (%s, %s, NOW())", (grupo_id, perm_id))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ACTUALIZACION", f"Asignación de permiso idPermiso={perm_id} a grupo idGrupo={grupo_id}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US047 add group permission error: {e}\n{traceback.format_exc()}")
@@ -10263,6 +11498,10 @@ def admin_group_permission_remove(current_user_id, grupo_id, perm_id):
         # Remover permiso del grupo
         cur.execute("UPDATE grupopermiso SET fechaFin=NOW() WHERE idGrupo=%s AND idPermiso=%s AND fechaFin IS NULL", (grupo_id, perm_id))
         conn.commit()
+        
+        # Registrar en auditoría
+        auditoria_log(current_user_id, "ELIMINACION", f"Eliminación de permiso idPermiso={perm_id} del grupo idGrupo={grupo_id}")
+        
         return jsonify({'ok':True}), 200
     except Exception as e:
         log(f"US047 remove group permission error: {e}\n{traceback.format_exc()}")
