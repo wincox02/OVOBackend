@@ -5795,6 +5795,82 @@ def tests_answer(id_test:int):
 # Curl ejemplo endpoint anterior:
 # curl --location '{{baseURL}}/api/v1/tests/1/answer' --header 'Content-Type: application/json' --data '{"answer":"Mi respuesta"}'
 
+# Endpoint para obtener el estado del test
+@app.route('/api/v1/tests/<int:id_test>/status', methods=['GET'])
+@token_required
+def get_test_status(current_user_id, id_test):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+
+        # Obtener el estado del test validando que el test fuera del usuario actual
+        cur.execute("SELECT t.idEstadoTest, et.nombreEstadoTest FROM test t JOIN estadotest et ON et.idEstadoTest = t.idEstadoTest WHERE t.idTest = %s AND t.idUsuario = %s", (id_test, current_user_id))
+        test_row = cur.fetchone()
+        if not test_row:
+            return jsonify({"errorCode":"ERR1","message":"Test no encontrado o no autorizado."}), 404
+
+        return jsonify({
+            "idEstadoTest": test_row['idEstadoTest'],
+            "nombreEstadoTest": test_row['nombreEstadoTest']
+        }), 200
+
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo obtener el estado del test. Intente nuevamente."}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception as e:
+            pass
+# curl ejemplo endpoint anterior:
+# curl --location '{{baseURL}}/api/v1/tests/1/status' --header 'Authorization: Bearer {{token}}'
+
+# # Endpoint para obtener el historial de mensajes del test
+
+# -- Volcando estructura para tabla ovo.test
+# CREATE TABLE IF NOT EXISTS `test` (
+#   `idTest` int(11) NOT NULL AUTO_INCREMENT,
+#   `idEstadoTest` int(11) NOT NULL,
+#   `idUsuario` int(11) DEFAULT NULL,
+#   `fechaTest` datetime NOT NULL DEFAULT current_timestamp(),
+#   `idChatIA` varchar(50) NOT NULL,
+#   `HistorialPreguntas` longtext DEFAULT NULL,
+#   PRIMARY KEY (`idTest`),
+#   KEY `FK_test_usuario` (`idUsuario`),
+#   KEY `FK_test_estadotest` (`idEstadoTest`),
+#   CONSTRAINT `FK_test_estadotest` FOREIGN KEY (`idEstadoTest`) REFERENCES `estadotest` (`idEstadoTest`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+#   CONSTRAINT `FK_test_usuario` FOREIGN KEY (`idUsuario`) REFERENCES `usuario` (`idUsuario`) ON DELETE CASCADE ON UPDATE CASCADE
+# ) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+@app.route('/api/v1/tests/<int:id_test>/history', methods=['GET'])
+@token_required
+def get_test_history(current_user_id, id_test):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Obtener el historial del test validando que el test fuera del usuario actual
+        cur.execute("SELECT HistorialPreguntas FROM test WHERE idTest = %s AND idUsuario = %s", (id_test, current_user_id))
+        test_row = cur.fetchone()
+        if not test_row:
+            return jsonify({"errorCode":"ERR1","message":"Historial no encontrado o no autorizado."}), 404
+
+        return jsonify({
+            "HistorialPreguntas": test_row['HistorialPreguntas']
+        }), 200
+
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo obtener el historial del test. Intente nuevamente."}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception as e:
+            pass
+# curl ejemplo endpoint anterior:
+# curl --location '{{baseURL}}/api/v1/tests/1/history' --header 'Authorization: Bearer {{token}}'
+
 # Endpoint para mostrar las carreras en base a los resultados del test
 @app.route('/api/v1/tests/<int:id_test>/results', methods=['GET'])
 @token_required
@@ -5805,7 +5881,7 @@ def get_test_results(current_user_id, id_test):
         cur = conn.cursor(dictionary=True)
 
         # Obtener idChatIA del test
-        cur.execute("SELECT idChatIA, idUsuario FROM test WHERE idTest = %s", (id_test,))
+        cur.execute("SELECT idChatIA, idUsuario, HistorialPreguntas FROM test WHERE idTest = %s", (id_test,))
         test_row = cur.fetchone()
         if not test_row:
             return jsonify({"errorCode":"ERR1","message":"Test no encontrado."}), 404
@@ -5815,6 +5891,19 @@ def get_test_results(current_user_id, id_test):
             conn.commit()
         elif int(test_row['idUsuario']) != int(current_user_id):
             return jsonify({"errorCode":"ERR1","message":"No está autorizado para ver los resultados de este test."}), 403
+
+        # Verificar estado del test con el historial de preguntas buscando por "completar el cuestionario" ej:
+        # ["Asistente: Bienvenido al Cuestionario Vocacional. Mi función es ayudarte a descubrir tus aptitudes y áreas de interés. Responde cada pregunta según cómo te sientes realmente. Empecemos:\n\n**Pregunta 1: Habilidades de ventas y orientación al cliente**\n\n¿Cómo te sientes acerca de las habilidades de ventas y la orientación al cliente?", "Usuario: excelente", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 2: Memoria y atención**\n\n¿Cómo te sientes acerca de tu capacidad de memoria y atención?", "Usuario: None", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 3: Trabajo en equipo y colaboración**\n\n¿Cómo te sientes acerca del trabajo en equipo y la colaboración?", "Usuario: None", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 4: Creatividad**\n\n¿Cómo te sientes acerca de tu creatividad?", "Usuario: muy mal", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 5: Pensamiento crítico y analítico**\n\n¿Cómo te sientes acerca de tu pensamiento crítico y analítico?", "Usuario: None", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 6: Habilidades numéricas y espaciales**\n\n¿Cómo te sientes acerca de tus habilidades numéricas y espaciales?", "Usuario: Bien", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 7: Gestión del tiempo**\n\n¿Cómo te sientes acerca de tu gestión del tiempo?", "Usuario: mal", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 8: Comunicación**\n\n¿Cómo te sientes acerca de tu comunicación?", "Usuario: horrendo", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 9: Resiliencia**\n\n¿Cómo te sientes acerca de tu resiliencia?", "Usuario: intermedio", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 10: Adaptabilidad**\n\n¿Cómo te sientes acerca de tu adaptabilidad?", "Usuario: Bien", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 11: Competencias digitales**\n\n¿Cómo te sientes acerca de tus competencias digitales?", "Usuario: muy mal", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 12: Inteligencia emocional**\n\n¿Cómo te sientes acerca de tu inteligencia emocional?", "Usuario: excelente", "Asistente: Gracias por tu respuesta. Pasemos a la siguiente pregunta.\n\n**Pregunta 13: Liderazgo**\n\n¿Cómo te sientes acerca del liderazgo?  \n\n**Pregunta 14: Habilidades psicomotrices y físicas**\n\n¿Cómo te sientes acerca de tus habilidades psicomotrices y físicas?", "Usuario: excelente", "Asistente: Gracias por completar el cuestionario. Ahora, procederé a generar el análisis final.\n\n**Análisis Final:**\n\n1. Habilidades de ventas y orientación al cliente: 4\n2. Memoria y atención: 1\n3. Trabajo en equipo y colaboración: 1\n4. Creatividad: 1\n5. Pensamiento crítico y analítico: 1\n6. Habilidades numéricas y espaciales: 3\n7. Gestión del tiempo: 1\n8. Comunicación: 1\n9. Resiliencia: 3\n10. Adaptabilidad: 3\n11. Competencias digitales: 1\n12. Inteligencia emocional: 4\n13. Liderazgo: 4\n14. Habilidades psicomotrices y físicas: 4\n\n**Conclusión Vocacional:**\n\nTus respuestas sugieren fortalezas significativas en inteligencia emocional, liderazgo y habilidades numéricas. Considera áreas relacionadas con liderazgo, gestión de datos y desarrollo emocional como posibles caminos vocacionales."]
+
+        if test_row['HistorialPreguntas']:
+            historial = json.loads(test_row['HistorialPreguntas'])
+            if historial and any("Análisis Final" in msg for msg in historial):
+                # El test ya fue completado
+                # Update al estado del test a Finalizado por las dudas
+                cur.execute("UPDATE test SET idEstadoTest = (SELECT idEstadoTest FROM estadotest WHERE nombreEstadoTest = 'Finalizado') WHERE idTest = %s", (id_test,))
+                conn.commit()
+            else:
+                return jsonify({"errorCode":"ERR1","message":"El test no ha sido completado, vuelva a la pagina del test para finalizarlo."}), 400
 
         chatIdIA = test_row['idChatIA']
         # Llamar al endpoint externo para obtener resultados validando que el estado del endpoint externo este en ("status": "FINISHED")
