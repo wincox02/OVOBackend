@@ -335,6 +335,11 @@ def requires_permission(permissions):
 def historial_acceso(user_id: int, estadoAcceso: str, ip: str, user_agent: str):
     conn = None
     try:
+        # Evitar insertar valores inválidos para idUsuario que rompan la FK (por ejemplo 0)
+        # En casos de intentos fallidos sin usuario identificado, solo logueamos localmente.
+        if not user_id or (isinstance(user_id, int) and user_id <= 0):
+            log(f"historial_acceso: idUsuario inválido/no provisto ({user_id}) - se omite insert en DB. estado={estadoAcceso}, ip={ip}")
+            return
         conn = mysql.connector.connect(**DB_CONFIG)
         cur = conn.cursor(dictionary=True)
         cur.execute("SELECT * FROM estadoacceso WHERE nombreEstadoAcceso = %s", (estadoAcceso,))
@@ -454,8 +459,10 @@ def login_google():
             from google.oauth2 import id_token as google_id_token  # type: ignore
             from google.auth.transport import requests as google_requests  # type: ignore
         except Exception:
+            # No intentar insertar idUsuario=0 (provoca error de FK). Registrar localmente y devolver mensaje claro.
+            log("login_google: dependencia 'google-auth' no encontrada. Install: pip install google-auth google-auth-oauthlib")
             historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
-            return jsonify({"errorCode": "ERR4", "message": "Inicio de sesión fallido"}), 500
+            return jsonify({"errorCode": "ERR_DEPENDENCY", "message": "Dependencia para Google OAuth no instalada. Ejecutar: pip install google-auth google-auth-oauthlib"}), 500
 
         data = request.get_json(silent=True) or {}
         id_token = data.get('id_token') or data.get('credential')
@@ -466,7 +473,17 @@ def login_google():
         request_adapter = google_requests.Request()
         client_id = os.getenv('GOOGLE_CLIENT_ID')
         # Verificar token; si hay CLIENT_ID lo usamos como audiencia
-        claims = google_id_token.verify_oauth2_token(id_token, request_adapter, audience=client_id) if client_id else google_id_token.verify_oauth2_token(id_token, request_adapter)
+        try:
+            if client_id:
+                claims = google_id_token.verify_oauth2_token(id_token, request_adapter, audience=client_id)
+            else:
+                claims = google_id_token.verify_oauth2_token(id_token, request_adapter)
+        except Exception as e:
+            # Token inválido o mal formado
+            log(f"/auth/google verify token error: {e}")
+            # Registrar intento fallido sin intentar insertar idUsuario inválido en DB
+            historial_acceso(0, "Fallido Google", request.remote_addr or '', request.headers.get('User-Agent', ''))
+            return jsonify({"errorCode": "ERR_TOKEN", "message": "Token de Google inválido o mal formado"}), 400
 
         email = claims.get('email')
         if not email:
@@ -937,7 +954,7 @@ def obtener_grupos_de_usuario(user_id: int):
 
 # Endpoint para listar todos los usuarios
 @app.route('/api/v1/admin/users', methods=['GET'])
-@requires_permission(['MANAGE_PROFILE','ASIGN_PERM'])
+@requires_permission(['MANAGE_PROFILE','ASIGN_PERM', 'ADMIN_APPROVE_INSTITUTION', 'ACCESS_HISTORY'])
 def admin_list_users(current_user_id):
     """Listado de usuarios con sus grupos activos."""
     conn = None
@@ -989,6 +1006,8 @@ def admin_list_users(current_user_id):
                 conn.close()
         except Exception:
             pass
+# Curl para probar el endpoint
+# curl -X GET "{{baseURL}}/api/v1/admin/users" -H "Authorization: Bearer {{token}}"
 
 # Endpoint para listar todos los grupos
 @app.route('/api/v1/admin/groups', methods=['GET'])
@@ -4657,6 +4676,49 @@ def create_user_and_send_mail(current_user_id: int, id_institucion: int):
 # Ejemplo curl
 # curl -X POST {{baseURL}}/api/v1/institutions/registration/approve/2 -H "Authorization: Bearer {{token}}"
 
+# Endpoint para modificar el usuario encargado de una institucion aprobada
+@app.route('/api/v1/institutions/<int:id_institucion>/change_admin', methods=['POST'])
+@requires_permission("ADMIN_APPROVE_INSTITUTION")
+def change_institution_admin(current_user_id: int, id_institucion: int):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        data = request.get_json(silent=True) or {}
+        idUsuario = data.get('idUsuario')
+        if not idUsuario:
+            return jsonify({"errorCode": "ERR1", "message": "El id del Usuario es requerido"}), 400
+        # Buscar el usuario en la base de datos
+        cur.execute("SELECT idUsuario FROM usuario WHERE idUsuario = %s", (idUsuario,))
+        usuario = cur.fetchone()
+        if not usuario:
+            return jsonify({"errorCode": "ERR2", "message": "El usuario no existe"}), 404
+        # Bucar la institucion en la base de datos
+        cur.execute("SELECT idInstitucion FROM institucion WHERE idInstitucion = %s", (id_institucion,))
+        institucion = cur.fetchone()
+        if not institucion:
+            return jsonify({"errorCode": "ERR3", "message": "La institución no existe"}), 404
+        # Actualizar el idUsuario de la institucion
+        cur.execute("UPDATE institucion SET idUsuario = %s WHERE idInstitucion = %s", (idUsuario, id_institucion))
+        conn.commit()
+        return jsonify({"ok": True, "message": "Usuario encargado actualizado exitosamente"}), 200
+    except Exception as e:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
+        log(f"/institutions/{id_institucion}/change_admin POST error: {e}\n{traceback.format_exc()}")
+        return jsonify({"errorCode": "ERR3", "message": "No se pudo actualizar el usuario encargado"}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+# Curl ejemplo
+# curl -X POST {{baseURL}}/api/v1/institutions/2/change_admin -H "Authorization: Bearer {{token}}" -H "Content-Type: application/json" -d '{"idUsuario":3}'
+
 # ============================ Gestión de carreras por institución (US018) ============================
 
 def _get_my_institution_id(conn, current_user_id: int):
@@ -6131,6 +6193,34 @@ def get_test_results(current_user_id, id_test):
             pass
 # Curl ejemplo endpoint anterior:
 # curl --location '{{baseURL}}/api/v1/tests/1/results' --header 'Authorization: Bearer {{token}}' --data ''
+
+# Endpoint para eliminar un test
+@app.route('/api/v1/tests/<int:id_test>', methods=['DELETE'])
+@token_required
+def delete_test(current_user_id, id_test):
+    conn = None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cur = conn.cursor(dictionary=True)
+        # Verificar que el test exista y pertenezca al usuario actual
+        cur.execute("SELECT idTest FROM test WHERE idTest = %s AND idUsuario = %s", (id_test, current_user_id))
+        test_row = cur.fetchone()
+        if not test_row:
+            return jsonify({"errorCode":"ERR1","message":"Test no encontrado o no autorizado."}), 404
+        # Eliminar el test
+        cur.execute("DELETE FROM test WHERE idTest = %s", (id_test,))
+        conn.commit()
+        return jsonify({"message": "Test eliminado correctamente."}), 200
+    except Exception as e:
+        return jsonify({"errorCode":"ERR1","message":"No se pudo eliminar el test. Intente nuevamente."}), 500
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+# Curl ejemplo endpoint anterior:
+# curl --location --request DELETE '{{baseURL}}/api/v1/tests/1'
 
 # ============================ Estadísticas del Sistema (US023) ============================
 # Tablas involucradas: usuario, usuariogrupo, usuarioestado, carrerainstitucion, institucionestado, test, testcarrerainstitucion
@@ -7928,6 +8018,7 @@ def admin_institution_requests_list(current_user_id):
                 i.mail,
                 i.fechaAlta,
                 i.idTipoInstitucion,
+                i.idUsuario,
                 l.nombreLocalidad,
                 p.nombreProvincia,
                 pa.nombrePais
@@ -7976,7 +8067,8 @@ def admin_institution_requests_list(current_user_id):
                 "fechaSolicitud": inst['fechaAlta'].strftime('%Y-%m-%d') if inst['fechaAlta'] else "N/D",
                 "tipoId": inst['idTipoInstitucion'] or 1,
                 "localizacion": localizacion,
-                "justificacion": justificacion
+                "justificacion": justificacion,
+                "idUsuario": inst['idUsuario']
             }
             
             solicitudes.append(solicitud)
